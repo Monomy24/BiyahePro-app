@@ -27,6 +27,7 @@ C:\Users\lague\Desktop\BiyahePro - new\RideHailing.API\obj\Debug\net10.0\RideHai
 C:\Users\lague\Desktop\BiyahePro - new\RideHailing.API\obj\Debug\net10.0\RideHailing.API.AssemblyInfo.cs
 C:\Users\lague\Desktop\BiyahePro - new\RideHailing.API\obj\Debug\net10.0\RideHailing.API.csproj.CoreCompileInputs.cache
 C:\Users\lague\Desktop\BiyahePro - new\RideHailing.API\obj\Debug\net10.0\RideHailing.API.MvcApplicationPartsAssemblyInfo.cache
+C:\Users\lague\Desktop\BiyahePro - new\RideHailing.API\obj\Debug\net10.0\RideHailing.API.sourcelink.json
 C:\Users\lague\Desktop\BiyahePro - new\RideHailing.API\obj\Debug\net10.0\rjimswa.dswa.cache.json
 C:\Users\lague\Desktop\BiyahePro - new\RideHailing.API\obj\Debug\net10.0\rjsmrazor.dswa.cache.json
 C:\Users\lague\Desktop\BiyahePro - new\RideHailing.API\obj\Debug\net10.0\rjsmcshtml.dswa.cache.json
