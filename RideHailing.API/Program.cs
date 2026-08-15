@@ -9,6 +9,15 @@ using RideHailing.API.Middleware;
 using RideHailing.API.Repositories;
 using RideHailing.API.Services;
 
+// Our SQL uses snake_case columns (full_name, password_hash, is_active, ...)
+// while our C# models use PascalCase (FullName, PasswordHash, IsActive, ...).
+// Dapper does NOT bridge that gap by default — without this line every
+// "SELECT * FROM ..." silently leaves those properties null instead of
+// throwing, which is how a null PasswordHash reached BCrypt.Verify and
+// crashed login with an unhandled 500. This must run before any Dapper
+// query executes, so it goes at the very top of Program.cs.
+Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ── Controllers ───────────────────────────────────────────────

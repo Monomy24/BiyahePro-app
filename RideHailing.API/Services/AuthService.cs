@@ -45,6 +45,10 @@ public class AuthService(
     {
         var user = await userRepo.GetByEmailAsync(request.Email.ToLowerInvariant());
         if (user == null || !user.IsActive) return null;
+        // Guard against a null/empty hash (e.g. bad mapping, corrupted row) so
+        // this fails as "invalid credentials" instead of throwing a 500 —
+        // BCrypt.Verify throws on a null/malformed hash rather than returning false.
+        if (string.IsNullOrEmpty(user.PasswordHash)) return null;
         if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash)) return null;
 
         var refreshToken = GenerateRefreshToken();

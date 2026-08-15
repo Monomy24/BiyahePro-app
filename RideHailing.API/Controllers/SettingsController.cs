@@ -2,6 +2,7 @@
 // Controllers/SettingsController.cs — System Settings API
 // Connected directly to Phase 1 app_settings table using Dapper
 // ============================================================
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RideHailing.API.Models;
@@ -12,10 +13,14 @@ namespace RideHailing.API.Controllers;
 
 [ApiController]
 [Route("api/settings")]
+[Authorize(Roles = "admin")]
 public class SettingsController(ISettingsRepository settingsRepo, ISettingsService settingsService) : ControllerBase
 {
-    // Public settings (Fares, Surge switches) — React frontend reads this
+    // Public settings (Fares, Surge switches) — React frontend reads this.
+    // The only endpoint on this controller that non-admins (or the unauthenticated
+    // mobile app) are allowed to hit.
     [HttpGet("public")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetPublic()
     {
         var all = await settingsRepo.GetByCategoryAsync(null);
@@ -35,11 +40,12 @@ public class SettingsController(ISettingsRepository settingsRepo, ISettingsServi
     [HttpPatch("{key}")]
     public async Task<IActionResult> Update(string key, [FromBody] UpdateSettingRequest req)
     {
-        // For testing purposes, we use a mock administrator ID from our seed data
-        // Once login tokens are ready, this will read from the secure user token claim!
-        var mockAdminId = Guid.Parse("018f3a3a-3333-7777-beee-000000000001");
-        
-        await settingsRepo.UpdateAsync(key, req.Value, mockAdminId);
+        // Real admin id, taken from the authenticated JWT — no more mock id.
+        var claimId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (claimId == null || !Guid.TryParse(claimId, out var adminId))
+            return Unauthorized();
+
+        await settingsRepo.UpdateAsync(key, req.Value, adminId);
         await settingsService.InvalidateCacheAsync();
         return NoContent();
     }

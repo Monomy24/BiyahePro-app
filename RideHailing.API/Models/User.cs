@@ -2,6 +2,8 @@
 // Models/User.cs
 // User domain model + Auth request/response DTOs
 // ============================================================
+using System.ComponentModel.DataAnnotations;
+
 namespace RideHailing.API.Models;
 
 // ── Domain Model ──────────────────────────────────────────────
@@ -25,6 +27,14 @@ public record RegisterRequest(
     string FullName,
     string Email,
     string Phone,
+    // Password policy: 8+ characters, at least one uppercase letter,
+    // one digit, and one symbol. [ApiController] validates this
+    // automatically and returns 400 with the message below if it fails —
+    // no controller/service code needs to check this manually.
+    [property: Required]
+    [property: RegularExpression(
+        @"^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$",
+        ErrorMessage = "Password must be at least 8 characters and include at least one uppercase letter, one number, and one symbol.")]
     string Password,
     string Role = "customer"
 );
