@@ -1,3 +1,4 @@
+// File path in project: RideHailing.API/Services/TripService.cs
 using Microsoft.AspNetCore.SignalR;
 using RideHailing.API.Hubs;
 using RideHailing.API.Models;
@@ -13,6 +14,7 @@ public interface ITripService
     Task<Trip?> CancelAsync(Guid tripId, Guid actorId, string role, string reason);
     Task<PagedResult<Trip>> GetTripHistoryAsync(Guid userId, string role, int page, int pageSize);
     Task<List<NearbyDriverResponse>> GetNearbyDriversAsync(double lat, double lng);
+    Task ActivateDueScheduledTripsAsync();
 }
 
 public class TripService(
@@ -35,6 +37,15 @@ public class TripService(
 
     public async Task<Trip?> BookAsync(Guid customerId, BookTripRequest req)
     {
+        if (req.ScheduledFor.HasValue)
+        {
+            var featureEnabled = await settings.GetBoolAsync(SettingKeys.FeatureScheduled, false);
+            if (!featureEnabled) return null;
+
+            var minLeadMinutes = await settings.GetIntAsync(SettingKeys.OpsScheduledMinLeadMins, 30);
+            if (req.ScheduledFor.Value < DateTime.UtcNow.AddMinutes(minLeadMinutes)) return null;
+        }
+
         var estimate = await fareService.EstimateAsync(new FareEstimateRequest(
             req.PickupLatitude, req.PickupLongitude,
             req.DropoffLatitude, req.DropoffLongitude));
@@ -52,25 +63,56 @@ public class TripService(
             BaseFare         = estimate.BaseFare,
             DistanceFare     = estimate.EstimatedDistanceFare,
             SurgeMultiplier  = estimate.SurgeMultiplier,
+            BookingFee       = estimate.BookingFee,
             FareAmount       = estimate.EstimatedTotal,
-            Status           = "requested",
+            // A scheduled trip sits in 'scheduled' (no dispatch) until its
+            // time arrives; an immediate booking goes straight to
+            // 'requested' as before. See ActivateDueScheduledTripsAsync.
+            Status           = req.ScheduledFor.HasValue ? "scheduled" : "requested",
+            ScheduledFor     = req.ScheduledFor,
             RequestedAt      = DateTime.UtcNow
         };
 
         var created = await tripRepo.CreateAsync(trip);
 
-        await hub.Clients.Group("available_drivers").SendAsync("NewTripRequest", new
-        {
-            TripId           = created.Id,
-            PickupAddress    = created.PickupAddress,
-            DropoffAddress   = created.DropoffAddress,
-            PickupLatitude   = created.PickupLatitude,
-            PickupLongitude  = created.PickupLongitude,
-            FareAmount       = created.FareAmount,
-            PaymentMethod    = created.PaymentMethod
-        });
+        // Only dispatch to drivers immediately for non-scheduled bookings —
+        // a scheduled trip gets notified later once it's activated.
+        if (!req.ScheduledFor.HasValue)
+            await NotifyDriversOfNewTripAsync(created);
 
         return created;
+    }
+
+    // Extracted from BookAsync so both an immediate booking and a scheduled
+    // trip becoming due (see ActivateDueScheduledTripsAsync) notify drivers
+    // through the exact same path.
+    private async Task NotifyDriversOfNewTripAsync(Trip trip)
+    {
+        await hub.Clients.Group("available_drivers").SendAsync("NewTripRequest", new
+        {
+            TripId           = trip.Id,
+            PickupAddress    = trip.PickupAddress,
+            DropoffAddress   = trip.DropoffAddress,
+            PickupLatitude   = trip.PickupLatitude,
+            PickupLongitude  = trip.PickupLongitude,
+            FareAmount       = trip.FareAmount,
+            PaymentMethod    = trip.PaymentMethod
+        });
+    }
+
+    // ── Scheduled rides (BP §III) ──────────────────────────────
+    // Called every 30s by ScheduledTripActivationService. Flips any due
+    // 'scheduled' trips to 'requested' and dispatches them to drivers
+    // exactly like a fresh immediate booking.
+    public async Task ActivateDueScheduledTripsAsync()
+    {
+        var dueTrips = await tripRepo.GetDueScheduledTripsAsync();
+        foreach (var trip in dueTrips)
+        {
+            await tripRepo.ActivateScheduledTripAsync(trip.Id);
+            trip.Status = "requested";
+            await NotifyDriversOfNewTripAsync(trip);
+        }
     }
 
     public async Task<Trip?> AcceptAsync(Guid tripId, Guid driverId)

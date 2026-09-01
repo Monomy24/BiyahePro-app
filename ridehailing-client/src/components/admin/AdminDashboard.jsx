@@ -1,12 +1,16 @@
+// File path in project: ridehailing-client/src/components/admin/AdminDashboard.jsx
 import React, { useState, useEffect } from 'react';
-import { Shield, Settings, CreditCard, LogOut, Car, Users } from 'lucide-react';
+import { Shield, Settings, CreditCard, LogOut, Car, Users, UserCog } from 'lucide-react';
 import LiveTrips from './LiveTrips';
 import AuditLogs from './AuditLogs';
+import DriversPanel from './DriversPanel';
+import { apiFetch } from '../../lib/api';
 
-export default function AdminDashboard({ onLogout }) {
+export default function AdminDashboard({ onLogout, onAuthError, adminName }) {
   const [activeTab, setActiveTab] = useState('general');
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState({});
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     if (activeTab !== 'general' && activeTab !== 'fares') return;
@@ -14,7 +18,10 @@ export default function AdminDashboard({ onLogout }) {
     async function loadBackendSettings() {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:5000/api/settings/public');
+        // /api/settings (not /public) returns every setting, including
+        // non-public ones like fare.booking_fee — admin-only, so this
+        // goes through apiFetch to send the bearer token.
+        const response = await apiFetch('/api/settings');
         if (response.ok) {
           const data = await response.json();
           const mappedSettings = {};
@@ -22,6 +29,7 @@ export default function AdminDashboard({ onLogout }) {
           setSettings(mappedSettings);
         }
       } catch (error) {
+        if (error.isAuthError) { onAuthError(); return; }
         console.error("Failed to reach backend API server:", error);
       } finally {
         setLoading(false);
@@ -32,17 +40,18 @@ export default function AdminDashboard({ onLogout }) {
 
   const handleSaveSettings = async (e) => {
     e.preventDefault();
+    setSaveError('');
     try {
       for (const [key, value] of Object.entries(settings)) {
-        await fetch(`http://localhost:5000/api/settings/${key}`, {
+        await apiFetch(`/api/settings/${key}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ value: value })
         });
       }
       alert('Parameters successfully committed to PostgreSQL database! Audit logs created.');
     } catch (error) {
-      alert('Error updating database settings.');
+      if (error.isAuthError) { onAuthError(); return; }
+      setSaveError('Error updating database settings.');
     }
   };
 
@@ -57,7 +66,10 @@ export default function AdminDashboard({ onLogout }) {
         <div>
           <div className="flex items-center gap-3 px-2 py-4 border-b border-slate-800 mb-6">
             <Shield className="w-6 h-6 text-amber-500" />
-            <span className="font-bold text-lg tracking-wide">BiyahePro Admin</span>
+            <div>
+              <div className="font-bold text-lg tracking-wide leading-tight">BiyahePro Admin</div>
+              {adminName && <div className="text-xs text-slate-500">{adminName}</div>}
+            </div>
           </div>
 
           <nav className="space-y-1">
@@ -87,6 +99,15 @@ export default function AdminDashboard({ onLogout }) {
               }`}
             >
               <Car className="w-4 h-4" /> Live System Trips
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('drivers')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-sm transition ${
+                activeTab === 'drivers' ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:bg-slate-800'
+              }`}
+            >
+              <UserCog className="w-4 h-4" /> Fleet & Driver Performance
             </button>
             <button
               type="button"
@@ -185,16 +206,31 @@ export default function AdminDashboard({ onLogout }) {
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:border-amber-500 focus:outline-none transition"
                       />
                     </div>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-400 tracking-wider mb-2">
+                        Booking Fee (PHP)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={settings['fare.booking_fee'] || '5.00'}
+                        onChange={(e) => handleSettingChange('fare.booking_fee', e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:border-amber-500 focus:outline-none transition"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">Flat ancillary fee added to every ride — drives the ₱153/mo break-even target.</p>
+                    </div>
                   </div>
                 </div>
+                {saveError && <p className="text-sm text-red-400">{saveError}</p>}
                 <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-6 py-3 rounded-xl transition text-sm">
                   Commit Parameters Change
                 </button>
               </form>
             )}
 
-            {activeTab === 'trips' && <LiveTrips />}
-            {activeTab === 'audit' && <AuditLogs />}
+            {activeTab === 'trips' && <LiveTrips onAuthError={onAuthError} />}
+            {activeTab === 'drivers' && <DriversPanel onAuthError={onAuthError} />}
+            {activeTab === 'audit' && <AuditLogs onAuthError={onAuthError} />}
           </>
         )}
       </div>

@@ -1,3 +1,4 @@
+// File path in project: RideHailing.API/Models/Trip.cs
 // ============================================================
 // Models/Trip.cs
 // Trip domain model + booking/fare request & response DTOs
@@ -29,7 +30,8 @@ public class Trip
     public decimal  DistanceFare     { get; set; }
     public decimal  TimeFare         { get; set; }
     public decimal  SurgeMultiplier  { get; set; } = 1.00m;
-    public decimal  FareAmount       { get; set; }   // final total
+    public decimal  BookingFee       { get; set; }   // flat ancillary fee (fare.booking_fee setting)
+    public decimal  FareAmount       { get; set; }   // final total, includes BookingFee
 
     // ── Trip metrics (filled on completion) ──────────────────
     public decimal? DistanceKm       { get; set; }
@@ -44,6 +46,12 @@ public class Trip
     // ── Cancellation ──────────────────────────────────────────
     public string?  CancelledBy      { get; set; }  // customer | driver | system
     public string?  CancelReason     { get; set; }
+
+    // ── Scheduled rides (BP §III "Future Product/Service Expansion") ──
+    // Set only when this trip was booked in advance. A background sweep
+    // (ScheduledTripActivationService) flips Status "scheduled" ->
+    // "requested" once ScheduledFor arrives, entering normal dispatch.
+    public DateTime? ScheduledFor    { get; set; }
 
     // ── State timestamps ──────────────────────────────────────
     public DateTime  RequestedAt     { get; set; }
@@ -70,7 +78,8 @@ public record BookTripRequest(
     double DropoffLongitude,
     string PickupAddress,
     string DropoffAddress,
-    string PaymentMethod = "cash"
+    string PaymentMethod = "cash",
+    DateTime? ScheduledFor = null
 );
 
 public record FareEstimateRequest(
@@ -89,6 +98,7 @@ public record TripStatusUpdate(
 public record FareEstimateResponse(
     decimal BaseFare,
     decimal EstimatedDistanceFare,
+    decimal BookingFee,
     decimal EstimatedTotal,
     decimal SurgeMultiplier,
     double  EstimatedDistanceKm,

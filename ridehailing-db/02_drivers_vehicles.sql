@@ -1,3 +1,4 @@
+// File path in project: ridehailing-db/02_drivers_vehicles.sql
 -- ============================================================
 -- 02_drivers_vehicles.sql
 -- Driver profiles, vehicles, and live location tracking
@@ -10,9 +11,13 @@ CREATE TABLE IF NOT EXISTS drivers (
     license_number      TEXT        NOT NULL UNIQUE,
     license_expiry      DATE        NOT NULL,
     status              TEXT        NOT NULL DEFAULT 'offline'
-                                    CHECK (status IN ('offline', 'available', 'on_trip', 'suspended')),
+                                    CHECK (status IN ('offline', 'available', 'on_trip', 'suspended', 'banned')),
     current_location    GEOGRAPHY(POINT, 4326),   -- PostGIS: lat/lng live position
     rating              NUMERIC(3,2) NOT NULL DEFAULT 5.00,
+    -- Driver Performance Index / Three-Strike Policy (BP §VI Quality Control, §IX Risk Analysis)
+    dpi_review_flag     BOOLEAN     NOT NULL DEFAULT false,  -- true when rating drops below 4.2 — triggers automatic review
+    strike_count        SMALLINT    NOT NULL DEFAULT 0,      -- 1 = warning, 2 = 7-day suspension, 3 = permanent ban
+    suspended_until     TIMESTAMPTZ,                         -- set on strike 2; NULL once lifted or for permanent bans
     total_trips         INT         NOT NULL DEFAULT 0,
     is_documents_verified BOOLEAN   NOT NULL DEFAULT false,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -43,8 +48,11 @@ CREATE TABLE IF NOT EXISTS vehicles (
     model           TEXT        NOT NULL,   -- e.g. Vios
     color           TEXT        NOT NULL,
     year            SMALLINT    NOT NULL,
-    vehicle_type    TEXT        NOT NULL DEFAULT 'sedan'
-                                CHECK (vehicle_type IN ('sedan', 'suv', 'van', 'motorcycle')),
+    vehicle_type    TEXT        NOT NULL DEFAULT 'motorcycle'
+                                -- BiyahePro only runs motorcycles (single rides) and
+                                -- motorcabs/baobao (multi-passenger) per the business plan —
+                                -- no sedan/suv/van in this fleet.
+                                CHECK (vehicle_type IN ('motorcycle', 'motorcab')),
     is_active       BOOLEAN     NOT NULL DEFAULT true,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

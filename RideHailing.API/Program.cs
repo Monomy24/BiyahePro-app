@@ -1,3 +1,4 @@
+// File path in project: RideHailing.API/Program.cs
 // ============================================================
 // Program.cs — Entry point, DI registration, middleware pipeline
 // ============================================================
@@ -99,6 +100,7 @@ builder.Services.AddScoped<IDriverService,  DriverService>();
 
 // Singleton: SettingsService has a shared in-memory cache
 builder.Services.AddSingleton<ISettingsService, SettingsService>();
+builder.Services.AddHostedService<ScheduledTripActivationService>();
 
 // ── Build ─────────────────────────────────────────────────────
 var app = builder.Build();

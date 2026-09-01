@@ -1,3 +1,4 @@
+// File path in project: RideHailing.API/Services/DriverService.cs
 // ============================================================
 // Services/DriverService.cs
 // Driver assignment, availability, and management logic
@@ -17,17 +18,36 @@ public interface IDriverService
     Task<bool>                       ReinstateAsync(Guid driverId, Guid adminId);
     Task<PagedResult<Driver>>        GetAllAsync(string? status, int page, int pageSize);
     Task<List<NearbyDriverResponse>> GetNearbyAsync(double lat, double lng);
+    Task<DriverStrike?>              IssueStrikeAsync(Guid driverId, Guid adminId, string reason);
+    Task<List<DriverStrike>>         GetStrikesAsync(Guid driverId);
 }
 
 public class DriverService(
     IDriverRepository  driverRepo,
     ISettingsService   settings) : IDriverService
 {
+    // If a strike-2 (7-day) suspension has expired, auto-lift it before
+    // returning the driver — so a stale "suspended" status doesn't linger
+    // just because nobody happened to hit an admin endpoint to clear it.
+    // Permanent bans (strike 3, SuspendedUntil == null) are untouched here.
+    private async Task<Driver> AutoLiftIfExpired(Driver driver)
+    {
+        if (driver.Status == "suspended" && driver.SuspendedUntil.HasValue && driver.SuspendedUntil.Value <= DateTime.UtcNow)
+        {
+            await driverRepo.LiftSuspensionAsync(driver.Id);
+            driver.Status = "offline";
+            driver.SuspendedUntil = null;
+        }
+        return driver;
+    }
+
     // ── Profile ───────────────────────────────────────────────
     public async Task<Driver?> GetProfileAsync(Guid userId)
     {
         var driver = await driverRepo.GetByUserIdAsync(userId);
         if (driver == null) return null;
+
+        driver = await AutoLiftIfExpired(driver);
 
         // Attach vehicle to the driver object
         driver.Vehicle = await driverRepo.GetVehicleAsync(driver.Id);
@@ -39,13 +59,18 @@ public class DriverService(
         var driver = await driverRepo.GetByIdAsync(driverId);
         if (driver == null) return null;
 
+        driver = await AutoLiftIfExpired(driver);
+
         return new DriverStatusResponse(
-            DriverId:   driver.Id,
-            Status:     driver.Status,
-            Latitude:   driver.Latitude,
-            Longitude:  driver.Longitude,
-            Rating:     driver.Rating,
-            TotalTrips: driver.TotalTrips
+            DriverId:        driver.Id,
+            Status:          driver.Status,
+            Latitude:        driver.Latitude,
+            Longitude:       driver.Longitude,
+            Rating:          driver.Rating,
+            TotalTrips:      driver.TotalTrips,
+            DpiReviewFlag:   driver.DpiReviewFlag,
+            StrikeCount:     driver.StrikeCount,
+            SuspendedUntil:  driver.SuspendedUntil
         );
     }
 
@@ -55,8 +80,10 @@ public class DriverService(
         var driver = await driverRepo.GetByUserIdAsync(userId);
         if (driver == null) return false;
 
-        // Can't go available if suspended
-        if (driver.Status == "suspended") return false;
+        driver = await AutoLiftIfExpired(driver);
+
+        // Can't go available while suspended or banned
+        if (driver.Status is "suspended" or "banned") return false;
 
         var newStatus = available ? "available" : "offline";
         await driverRepo.UpdateStatusAsync(driver.Id, newStatus);
@@ -81,6 +108,13 @@ public class DriverService(
         await driverRepo.UpdateStatusAsync(driverId, "offline");
         return true;
     }
+
+    // ── Driver Performance Index / Three-Strike Policy (BP §VI, §IX) ──
+    public async Task<DriverStrike?> IssueStrikeAsync(Guid driverId, Guid adminId, string reason)
+        => await driverRepo.AddStrikeAsync(driverId, reason, adminId);
+
+    public async Task<List<DriverStrike>> GetStrikesAsync(Guid driverId)
+        => await driverRepo.GetStrikesAsync(driverId);
 
     // ── Queries ───────────────────────────────────────────────
     public async Task<PagedResult<Driver>> GetAllAsync(string? status, int page, int pageSize)

@@ -1,3 +1,4 @@
+// File path in project: RideHailing.API/Repositories/DriverRepository.cs
 using Dapper;
 using Npgsql;
 using RideHailing.API.Models;
@@ -13,6 +14,9 @@ public interface IDriverRepository
     Task UpdateLocationAsync(Guid driverId, double lat, double lng);
     Task<List<NearbyDriverResponse>> GetNearbyAsync(double lat, double lng, int radiusKm);
     Task<PagedResult<Driver>> GetAllAsync(string? status, int page, int pageSize);
+    Task<DriverStrike?> AddStrikeAsync(Guid driverId, string reason, Guid issuedBy);
+    Task<List<DriverStrike>> GetStrikesAsync(Guid driverId);
+    Task LiftSuspensionAsync(Guid driverId);
 }
 
 public class DriverRepository(IConfiguration config) : IDriverRepository
@@ -65,5 +69,68 @@ public class DriverRepository(IConfiguration config) : IDriverRepository
         var total = await db.QuerySingleAsync<int>($"SELECT COUNT(*) FROM drivers d {where}", new { Status = status });
         var items = await db.QueryAsync<Driver>($"SELECT d.*, u.full_name, u.phone, u.email FROM drivers d JOIN users u ON u.id = d.user_id {where} ORDER BY d.created_at DESC LIMIT @PageSize OFFSET @Offset", new { Status = status, PageSize = pageSize, Offset = offset });
         return new PagedResult<Driver> { Items = items.ToList(), TotalCount = total, Page = page, PageSize = pageSize };
+    }
+
+    // ── Driver Performance Index / Three-Strike Policy (BP §VI, §IX) ──
+
+    // Increments strike_count and applies the corresponding consequence
+    // (warning / 7-day suspension / permanent ban) in a single statement,
+    // then records the strike. Returns null if the driver doesn't exist
+    // or is already banned (a banned driver can't accumulate further strikes).
+    public async Task<DriverStrike?> AddStrikeAsync(Guid driverId, string reason, Guid issuedBy)
+    {
+        using var db = Connection();
+        var sql = @"
+            WITH updated AS (
+                UPDATE drivers
+                SET strike_count = strike_count + 1,
+                    status = CASE
+                        WHEN strike_count + 1 = 2 THEN 'suspended'
+                        WHEN strike_count + 1 >= 3 THEN 'banned'
+                        ELSE status
+                    END,
+                    suspended_until = CASE
+                        WHEN strike_count + 1 = 2 THEN NOW() + INTERVAL '7 days'
+                        ELSE NULL
+                    END,
+                    updated_at = NOW()
+                WHERE id = @DriverId AND status != 'banned'
+                RETURNING id, strike_count, suspended_until
+            )
+            INSERT INTO driver_strikes (driver_id, strike_number, reason, issued_by, consequence, expires_at)
+            SELECT
+                id,
+                strike_count,
+                @Reason,
+                @IssuedBy,
+                CASE
+                    WHEN strike_count = 1 THEN 'Formal warning issued — mandatory re-training session required'
+                    WHEN strike_count = 2 THEN 'Suspended from the platform for 7 days'
+                    ELSE 'Permanently removed from the BiyahePro network'
+                END,
+                suspended_until
+            FROM updated
+            RETURNING *";
+        return await db.QuerySingleOrDefaultAsync<DriverStrike>(sql, new { DriverId = driverId, Reason = reason, IssuedBy = issuedBy });
+    }
+
+    public async Task<List<DriverStrike>> GetStrikesAsync(Guid driverId)
+    {
+        using var db = Connection();
+        var result = await db.QueryAsync<DriverStrike>(
+            "SELECT * FROM driver_strikes WHERE driver_id = @DriverId ORDER BY issued_at DESC",
+            new { DriverId = driverId });
+        return result.ToList();
+    }
+
+    // Called once a strike-2 (7-day) suspension window has passed. Does NOT
+    // touch permanent bans (strike 3) — those require a manual admin
+    // ReinstateAsync-style action, not an automatic lift.
+    public async Task LiftSuspensionAsync(Guid driverId)
+    {
+        using var db = Connection();
+        await db.ExecuteAsync(
+            "UPDATE drivers SET status = 'offline', suspended_until = NULL, updated_at = NOW() WHERE id = @DriverId AND status = 'suspended'",
+            new { DriverId = driverId });
     }
 }

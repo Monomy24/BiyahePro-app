@@ -1,3 +1,4 @@
+// File path in project: ridehailing-db/03_trips.sql
 -- ============================================================
 -- 03_trips.sql
 -- Trip lifecycle: requested → accepted → en_route →
@@ -18,6 +19,7 @@ CREATE TABLE IF NOT EXISTS trips (
     -- Trip state machine
     status              TEXT        NOT NULL DEFAULT 'requested'
                                     CHECK (status IN (
+                                        'scheduled',
                                         'requested',
                                         'accepted',
                                         'en_route',
@@ -27,12 +29,17 @@ CREATE TABLE IF NOT EXISTS trips (
                                         'cancelled'
                                     )),
 
+    -- Scheduled rides (BP §III) — set when booked in advance; a background
+    -- sweep flips status 'scheduled' -> 'requested' once this arrives.
+    scheduled_for       TIMESTAMPTZ,
+
     -- Fare breakdown (all from app_settings at time of booking)
     base_fare           NUMERIC(10,2) NOT NULL DEFAULT 0,
     distance_fare       NUMERIC(10,2) NOT NULL DEFAULT 0,
     time_fare           NUMERIC(10,2) NOT NULL DEFAULT 0,
     surge_multiplier    NUMERIC(4,2) NOT NULL DEFAULT 1.00,
-    fare_amount         NUMERIC(10,2) NOT NULL DEFAULT 0,   -- final total
+    booking_fee         NUMERIC(10,2) NOT NULL DEFAULT 0,   -- flat ancillary fee (see fare.booking_fee setting)
+    fare_amount         NUMERIC(10,2) NOT NULL DEFAULT 0,   -- final total, includes booking_fee
 
     -- Distance and duration
     distance_km         NUMERIC(8,2),
@@ -62,6 +69,11 @@ CREATE INDEX IF NOT EXISTS idx_trips_customer    ON trips (customer_id);
 CREATE INDEX IF NOT EXISTS idx_trips_driver      ON trips (driver_id);
 CREATE INDEX IF NOT EXISTS idx_trips_status      ON trips (status);
 CREATE INDEX IF NOT EXISTS idx_trips_requested_at ON trips (requested_at DESC);
+
+-- Fast lookup for the activation sweep: "which scheduled trips are due?"
+CREATE INDEX IF NOT EXISTS idx_trips_scheduled_pending
+    ON trips (scheduled_for)
+    WHERE status = 'scheduled';
 
 -- Spatial indexes for pickup/dropoff queries
 CREATE INDEX IF NOT EXISTS idx_trips_pickup

@@ -1,3 +1,4 @@
+// File path in project: RideHailing.API/Controllers/DriversController.cs
 // ============================================================
 // Controllers/DriversController.cs — Fleet Tracking API
 // Allows drivers to view profiles and admins to track statuses
@@ -5,6 +6,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RideHailing.API.Models;
 using RideHailing.API.Repositories;
 using RideHailing.API.Services;
 
@@ -40,5 +42,58 @@ public class DriversController(IDriverRepository driverRepo, IDriverService driv
     {
         var result = await driverService.GetAllAsync(status, page, pageSize);
         return Ok(result);
+    }
+
+    // ── Driver Performance Index / Three-Strike Policy (BP §VI, §IX) ──
+
+    // POST: api/drivers/{id}/strikes — issue a strike against a driver.
+    // Strike 1 = formal warning, 2 = 7-day suspension, 3 = permanent ban.
+    // The consequence is applied automatically based on the driver's
+    // resulting strike count (see DriverRepository.AddStrikeAsync).
+    [HttpPost("{id}/strikes")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> IssueStrike(Guid id, [FromBody] IssueStrikeRequest req)
+    {
+        var claimId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (claimId == null || !Guid.TryParse(claimId, out var adminId)) return Unauthorized();
+
+        var strike = await driverService.IssueStrikeAsync(id, adminId, req.Reason);
+        if (strike == null)
+            return NotFound(new { message = "Driver not found, or driver is already permanently banned." });
+
+        return Ok(strike);
+    }
+
+    // GET: api/drivers/{id}/strikes — full strike history for a driver
+    [HttpGet("{id}/strikes")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> GetStrikes(Guid id)
+    {
+        var strikes = await driverService.GetStrikesAsync(id);
+        return Ok(strikes);
+    }
+
+    // POST: api/drivers/{id}/suspend — manual suspension outside the strike flow
+    [HttpPost("{id}/suspend")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> Suspend(Guid id)
+    {
+        var claimId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (claimId == null || !Guid.TryParse(claimId, out var adminId)) return Unauthorized();
+
+        var success = await driverService.SuspendAsync(id, adminId);
+        return success ? NoContent() : NotFound(new { message = "Driver not found." });
+    }
+
+    // POST: api/drivers/{id}/reinstate — manually lift a suspension early
+    [HttpPost("{id}/reinstate")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> Reinstate(Guid id)
+    {
+        var claimId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (claimId == null || !Guid.TryParse(claimId, out var adminId)) return Unauthorized();
+
+        var success = await driverService.ReinstateAsync(id, adminId);
+        return success ? NoContent() : NotFound(new { message = "Driver not found, or driver is not currently suspended." });
     }
 }

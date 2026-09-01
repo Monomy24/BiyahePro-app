@@ -5,7 +5,7 @@ namespace RideHailing.API.Services;
 public interface IFareService
 {
     Task<FareEstimateResponse> EstimateAsync(FareEstimateRequest request);
-    Task<(decimal total, decimal baseFare, decimal distFare, decimal timeFare, decimal surge)>
+    Task<(decimal total, decimal baseFare, decimal distFare, decimal timeFare, decimal bookingFee, decimal surge)>
         CalculateAsync(double distanceKm, int durationMinutes);
 }
 
@@ -19,12 +19,13 @@ public class FareService(ISettingsService settings) : IFareService
         // Estimate travel duration based on typical city traffic speeds
         var estimatedMinutes = (int)(distKm / 25.0 * 60);
 
-        var (total, baseFare, distFare, timeFare, surge) =
+        var (total, baseFare, distFare, timeFare, bookingFee, surge) =
             await CalculateAsync(distKm, estimatedMinutes);
 
         return new FareEstimateResponse(
             BaseFare: baseFare,
             EstimatedDistanceFare: distFare,
+            BookingFee: bookingFee,
             EstimatedTotal: total,
             SurgeMultiplier: surge,
             EstimatedDistanceKm: Math.Round(distKm, 2),
@@ -32,7 +33,7 @@ public class FareService(ISettingsService settings) : IFareService
         );
     }
 
-    public async Task<(decimal total, decimal baseFare, decimal distFare, decimal timeFare, decimal surge)>
+    public async Task<(decimal total, decimal baseFare, decimal distFare, decimal timeFare, decimal bookingFee, decimal surge)>
         CalculateAsync(double distanceKm, int durationMinutes)
     {
         var baseFare   = await settings.GetDecimalAsync(SettingKeys.FareBase, 40m);
@@ -41,20 +42,25 @@ public class FareService(ISettingsService settings) : IFareService
         var minimum    = await settings.GetDecimalAsync(SettingKeys.FareMinimum, 80m);
         var surgeOn    = await settings.GetBoolAsync(SettingKeys.SurgeEnabled, false);
         var surgeMulti = await settings.GetDecimalAsync(SettingKeys.SurgeMultiplier, 1.0m);
+        var bookingFee = await settings.GetDecimalAsync(SettingKeys.FareBookingFee, 5m);
 
         var distFare = (decimal)distanceKm * perKm;
         var timeFare = durationMinutes * perMinute;
         var surge    = surgeOn ? surgeMulti : 1.0m;
 
         var subtotal = (baseFare + distFare + timeFare) * surge;
-        var total    = Math.Max(subtotal, minimum);
+        // Booking fee is a flat ancillary charge — per the BP's break-even
+        // analysis it's added on top regardless of trip length, and sits
+        // outside the minimum-fare floor and surge multiplier.
+        var total    = Math.Max(subtotal, minimum) + bookingFee;
 
         return (
-            total:    Math.Round(total, 2),
-            baseFare: Math.Round(baseFare, 2),
-            distFare: Math.Round(distFare, 2),
-            timeFare: Math.Round(timeFare, 2),
-            surge:    surge
+            total:      Math.Round(total, 2),
+            baseFare:   Math.Round(baseFare, 2),
+            distFare:   Math.Round(distFare, 2),
+            timeFare:   Math.Round(timeFare, 2),
+            bookingFee: Math.Round(bookingFee, 2),
+            surge:      surge
         );
     }
 

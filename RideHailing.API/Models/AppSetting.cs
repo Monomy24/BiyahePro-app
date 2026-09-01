@@ -1,3 +1,4 @@
+// File path in project: RideHailing.API/Models/AppSetting.cs
 // ============================================================
 // Models/AppSetting.cs
 // App settings domain model — maps to app_settings DB table
@@ -47,6 +48,7 @@ public static class SettingKeys
     public const string FarePerMinute        = "fare.per_minute";
     public const string FareMinimum          = "fare.minimum";
     public const string FareCancellationFee  = "fare.cancellation_fee";
+    public const string FareBookingFee       = "fare.booking_fee";
 
     // Surge
     public const string SurgeEnabled         = "surge.enabled";
@@ -60,6 +62,7 @@ public static class SettingKeys
     public const string OpsDriverTimeout     = "ops.driver_arrival_timeout";
     public const string OpsPingInterval      = "ops.location_ping_seconds";
     public const string OpsMaxTripsPerDriver = "ops.max_active_trips_driver";
+    public const string OpsScheduledMinLeadMins = "ops.scheduled_min_lead_minutes";
 
     // Features
     public const string FeatureCash          = "feature.cash_payment";

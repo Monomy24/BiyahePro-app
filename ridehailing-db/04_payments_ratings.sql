@@ -1,3 +1,4 @@
+// File path in project: ridehailing-db/04_payments_ratings.sql
 -- ============================================================
 -- 04_payments_ratings.sql
 -- ============================================================
@@ -37,7 +38,9 @@ CREATE TABLE IF NOT EXISTS ratings (
 CREATE INDEX IF NOT EXISTS idx_ratings_trip      ON ratings (trip_id);
 CREATE INDEX IF NOT EXISTS idx_ratings_rated_user ON ratings (rated_user);
 
--- Auto-update driver rating average when a new rating is inserted
+-- Auto-update driver rating average when a new rating is inserted.
+-- Also sets dpi_review_flag when the new average drops below 4.2 —
+-- BP §VI: "A rating below 4.2 triggers an automatic review."
 CREATE OR REPLACE FUNCTION update_driver_rating()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
@@ -54,7 +57,9 @@ BEGIN
         FROM ratings
         WHERE rated_user = NEW.rated_user;
 
-        UPDATE drivers SET rating = v_new_avg
+        UPDATE drivers
+        SET rating = v_new_avg,
+            dpi_review_flag = (v_new_avg < 4.2)
         WHERE user_id = NEW.rated_user;
     END IF;
 
@@ -67,3 +72,24 @@ CREATE OR REPLACE TRIGGER trg_update_driver_rating
     FOR EACH ROW EXECUTE FUNCTION update_driver_rating();
 
 GRANT SELECT, INSERT ON ratings TO ridehailing_app;
+
+-- ============================================================
+-- Driver strikes (BP §IX "Three-Strike" Policy)
+--   Strike 1: formal warning + mandatory re-training session
+--   Strike 2: 7-day platform suspension
+--   Strike 3: permanent removal from the BiyahePro network
+-- ============================================================
+CREATE TABLE IF NOT EXISTS driver_strikes (
+    id              UUID        PRIMARY KEY DEFAULT uuidv7(),
+    driver_id       UUID        NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+    strike_number   SMALLINT    NOT NULL CHECK (strike_number BETWEEN 1 AND 3),
+    reason          TEXT        NOT NULL,
+    consequence     TEXT        NOT NULL,   -- human-readable outcome, snapshotted at issue time
+    issued_by       UUID        NOT NULL REFERENCES users(id),  -- admin who issued it
+    issued_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at      TIMESTAMPTZ                                 -- set for strike 2 (7-day suspension); NULL otherwise
+);
+
+CREATE INDEX IF NOT EXISTS idx_driver_strikes_driver ON driver_strikes (driver_id, issued_at DESC);
+
+GRANT SELECT, INSERT ON driver_strikes TO ridehailing_app;

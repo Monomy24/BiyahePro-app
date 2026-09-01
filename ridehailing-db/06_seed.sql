@@ -1,3 +1,4 @@
+// File path in project: ridehailing-db/06_seed.sql
 -- ============================================================
 -- 06_seed.sql
 -- Default app_settings rows — edit these from the admin panel,
@@ -12,6 +13,7 @@ INSERT INTO app_settings (key, value, data_type, category, label, description, i
 ('fare.per_minute',        '2.50',   'number',  'fare',       'Per minute rate',          'Added to fare for each minute in-trip (PHP)',            false),
 ('fare.minimum',           '80.00',  'number',  'fare',       'Minimum fare',             'Lowest possible fare regardless of distance (PHP)',      false),
 ('fare.cancellation_fee',  '25.00',  'number',  'fare',       'Cancellation fee',         'Fee charged when customer cancels after driver accepts', false),
+('fare.booking_fee',       '5.00',   'number',  'fare',       'Booking fee',              'Flat ancillary fee added to every completed ride (PHP) — see BP break-even analysis', false),
 
 -- ── Surge settings ───────────────────────────────────────────
 ('surge.enabled',          'true',   'boolean', 'surge',      'Surge pricing enabled',    'Master toggle for surge pricing',                       false),
@@ -25,6 +27,7 @@ INSERT INTO app_settings (key, value, data_type, category, label, description, i
 ('ops.driver_arrival_timeout',  '10', 'number', 'operations', 'Driver arrival timeout',   'Minutes before trip is auto-cancelled if driver no-show',false),
 ('ops.location_ping_seconds',   '5',  'number', 'operations', 'Location ping interval',   'How often driver app sends location update (seconds)',  false),
 ('ops.max_active_trips_driver', '1',  'number', 'operations', 'Max concurrent trips',     'Active trips allowed per driver at once',               false),
+('ops.scheduled_min_lead_minutes', '30', 'number', 'operations', 'Scheduled ride lead time', 'Earliest a scheduled ride can be booked ahead of its requested time', false),
 
 -- ── Feature flags ────────────────────────────────────────────
 ('feature.cash_payment',        'true',  'boolean', 'features', 'Cash payments',          'Allow cash as payment method',                          true),

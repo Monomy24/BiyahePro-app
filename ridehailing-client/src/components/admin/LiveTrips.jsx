@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, MapPin } from 'lucide-react';
+import { apiFetch } from '../../lib/api';
+import StatusBadge from '../ui/StatusBadge';
 
-export default function LiveTrips() {
+export default function LiveTrips({ onAuthError }) {
   const [trips, setTrips] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -9,12 +11,13 @@ export default function LiveTrips() {
     try {
       setLoading(true);
       // Fetches standard history logs from your backend controller
-      const response = await fetch('http://localhost:5000/api/trips/history?page=1&pageSize=50');
+      const response = await apiFetch('/api/trips/history?page=1&pageSize=50');
       if (response.ok) {
         const data = await response.json();
         setTrips(data.items || []);
       }
     } catch (error) {
+      if (error.isAuthError) { onAuthError?.(); return; }
       console.error("Failed to fetch live system trips:", error);
     } finally {
       setLoading(false);
@@ -24,17 +27,6 @@ export default function LiveTrips() {
   useEffect(() => {
     fetchLiveTrips();
   }, []);
-
-  const getStatusBadge = (status) => {
-    const styles = {
-      requested: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-      accepted: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-      en_route: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-      completed: 'bg-green-500/10 text-green-400 border-green-500/20',
-      cancelled: 'bg-red-500/10 text-red-400 border-red-500/20',
-    };
-    return styles[status] || 'bg-slate-500/10 text-slate-400 border-slate-500/20';
-  };
 
   return (
     <div className="space-y-4">
@@ -86,9 +78,7 @@ export default function LiveTrips() {
                   </td>
                   <td className="p-4 font-mono font-semibold text-amber-400">₱{trip.fareAmount}</td>
                   <td className="p-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusBadge(trip.status)}`}>
-                      {trip.status.replace('_', ' ')}
-                    </span>
+                    <StatusBadge status={trip.status} />
                   </td>
                 </tr>
               ))}

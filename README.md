@@ -6,17 +6,84 @@ Welcome to the central repository for the **BiyahePro** ride-hailing backend eco
 
 ## 🛠️ Global Project Architecture Map
 
-Ensure your folder tree layout side-by-side matches this schematic inside your root workspace:
+Ensure your folder tree layout side-by-side matches this complete schematic inside your root workspace:
 
 ```text
-BiyahePro - new/                        ← Root Workspace Directory
-├── README.md                           ← This file!
-├── ridehailing-db/                     ← Phase 1: Database Scripts Folder
-│   ├── 00_extensions.sql to 07_refresh_tokens.sql
-└── RideHailing.API/                    ← Phase 2: .NET Core Project Folder
-    ├── Controllers/, Hubs/, Models/
-    ├── Middleware/, Repositories/, Services/
-    ├── Program.cs & appsettings.json
+BiyahePro - new/                                    ← Root Workspace Directory
+├── README.md                                      ← This file!
+│
+├── ridehailing-client/                            ← Phase 0: React Frontend Client
+│   ├── index.html
+│   ├── package.json
+│   ├── eslint.config.js
+│   ├── vite.config.js
+│   ├── README.md
+│   ├── lib/
+│   │   └── api.js                                 ← API client integration layer
+│   ├── public/
+│   │   └── [Static assets]
+│   └── src/
+│       ├── main.jsx                               ← Application entry point
+│       ├── App.jsx                                ← Root component
+│       ├── App.css
+│       ├── index.css
+│       ├── assets/                                ← Images, icons, media
+│       └── components/
+│           └── admin/                             ← Admin dashboard UI
+│               ├── AdminDashboard.jsx
+│               ├── AuditLogs.jsx
+│               ├── LiveTrips.jsx
+│               ├── PinOverlay.jsx
+|── ui/
+|── StatusBadge.jsx
+│
+├── ridehailing-db/                                ← Phase 1: PostgreSQL Database Scripts
+│   ├── 00_extensions.sql                          ← PostGIS/UUID extensions
+│   ├── 01_users.sql                               ← User accounts & authentication
+│   ├── 02_drivers_vehicles.sql                    ← Driver & vehicle fleet tables
+│   ├── 03_trips.sql                               ← Trip booking & tracking
+│   ├── 04_payments_ratings.sql                    ← Transactions & ratings
+│   ├── 05_app_settings.sql                        ← Global configuration cache
+│   ├── 06_seed.sql                                ← Mock testing data
+│   ├── 07_refresh_tokens.sql                      ← JWT token management
+│   ├── 08_seed_admin.sql                          ← Admin account creation
+│   └── 10_add_booking_fee.sql                     ← Booking fee column addition
+│
+└── RideHailing.API/                               ← Phase 2: ASP.NET Core Web API
+    ├── Program.cs                                 ← Application entry & DI container
+    ├── RideHailing.API.csproj                     ← Project configuration
+    ├── appsettings.json                           ← Database & JWT config
+    ├── bin/
+    │   └── Debug/net10.0/                         ← Compiled output
+    ├── obj/                                       ← Build artifacts
+    ├── Controllers/                               ← API endpoints
+    │   ├── AuthController.cs                      ← Login & registration
+    │   ├── UsersController.cs                     ← User management
+    │   ├── DriversController.cs                   ← Driver operations
+    │   ├── TripsController.cs                     ← Trip booking & tracking
+    │   └── SettingsController.cs                  ← Admin configuration
+    ├── Hubs/
+    │   └── RideHub.cs                             ← SignalR real-time WebSocket connections
+    ├── Models/                                    ← Data transfer objects (DTOs)
+    │   ├── User.cs
+    │   ├── Driver.cs
+    │   ├── Trip.cs
+    │   └── AppSetting.cs
+    ├── Middleware/
+    │   ├── appsettings.json
+    │   └── AuditMiddleware.cs                     ← Request/response audit logging
+    ├── Repositories/                              ← Data access layer (Dapper ORM)
+    │   ├── UserRepository.cs
+    │   ├── DriverRepository.cs
+    │   ├── DriverRepositoryAdditions.cs
+    │   ├── TripRepository.cs
+    │   └── SettingsRepository.cs
+    └── Services/                                  ← Business logic layer
+        ├── AuthService.cs                         ← Authentication & JWT generation
+        ├── DriverService.cs                       ← Driver operations
+        ├── TripService.cs                         ← Trip booking & dispatch
+        ├── FareService.cs                         ← Dynamic fare calculation
+        └── SettingsService.cs                     ← Configuration management
 ```
 
 ---
@@ -38,9 +105,12 @@ This phase builds your relational database, adds location trackers, creates an i
    ```
 3. Load and compile all structure scripts in their correct file order to prevent cross-relationship breaks:
    ```sql
-   \(\i 00_extensions.sql    \i 01_users.sql    \i 02_drivers_vehicles.sql    \i 03_trips.sql    \i 04_payments_ratings.sql    \i 05_app_settings.sql    \i 06_seed.sql    \i 07_refresh_tokens.\)sql
+   \(\i 00_extensions.sql    \i 01_users.sql    \i 02_drivers_vehicles.sql    \i 03_trips.sql    \i 04_payments_ratings.sql    \i 05_app_settings.sql    \i 06_seed.sql    \i 07_refresh_tokens.sql    \i 08_seed_admin.\)sql
    ```
 4. Verify your structural list displays **10 tables** by executing `\dt` (Press **Spacebar** to scroll, and **q** to close the viewer panel), then type `\q` to exit.
+5. `08_seed_admin.sql` creates a real, login-able admin account — see **Admin Panel Access** below.
+6. **Already had a database from before this fix?** Also run `\i 09_fix_vehicle_types.sql` — it corrects the `vehicles.vehicle_type` constraint from a placeholder `sedan/suv/van/motorcycle` set to BiyahePro's actual fleet (`motorcycle`, `motorcab`). Fresh installs get this automatically from `02_drivers_vehicles.sql` and can skip it.
+7. **Already had a database from before this fix?** Also run `\i 10_add_booking_fee.sql` — adds the `trips.booking_fee` column and the `fare.booking_fee` setting (₱5 default) referenced in the BP's break-even analysis. Fresh installs get this automatically from `03_trips.sql` / `06_seed.sql` and can skip it.
 
 ---
 
@@ -67,12 +137,81 @@ The application will light up and display that it is actively listening for web 
 
 ---
 
+## 🌐 Frontend Local Access (React + Vite)
+
+This repo includes a local admin frontend in `ridehailing-client`. It is the browser entry point where the login screen appears and where admin users authenticate before accessing the dashboard.
+
+### 🏃 Start the frontend locally
+1. Open a new terminal in VS Code and go to the client folder:
+   ```powershell
+   cd "C:\Users\lague\Desktop\BiyahePro - new\ridehailing-client"
+   ```
+2. Install dependencies if needed:
+   ```powershell
+   npm install
+   ```
+3. Start the local development server:
+   ```powershell
+   npm run dev
+   ```
+4. Open the browser to the Vite local URL shown in the terminal, usually:
+   ```text
+   http://localhost:5173
+   ```
+
+### 🔐 Where the auth panel is
+The login screen is the admin authentication panel rendered by the React client. It is driven by the files:
+- `ridehailing-client/src/components/admin/LoginForm.jsx`
+- `ridehailing-client/src/components/admin/AdminPage.jsx`
+- `ridehailing-client/lib/api.js`
+
+When the app loads, the browser shows the BiyahePro Admin sign-in form. After a successful login, the app saves the JWT in browser storage and loads the dashboard.
+
+### 👤 Admin login credentials
+Use the seeded admin account created by `ridehailing-db/08_seed_admin.sql`:
+- Email: `admin@biyahepro.local`
+- Password: `ChangeMe123!`
+
+> These credentials are for local development only. Change the password before any real deployment.
+
+### ⚠️ Back-end requirement
+The frontend calls the API at:
+```text
+http://localhost:5000
+```
+So make sure the ASP.NET API is running first with:
+```powershell
+cd "C:\Users\lague\Desktop\BiyahePro - new\RideHailing.API"
+dotnet run
+```
+If the API is not running, the login page may fail to authenticate even though the frontend loads properly.
+
+---
+
 ## 🧠 Core Engineering Features to Remember
 
 * **UUIDv7 Standard Identifiers:** Primary keys are generated as sequential, time-sortable strings. They double as an organic creation timestamp, which speeds up search sorting without extra table columns.
 * **PostGIS Radius Math:** Vehicle locations utilize geographical coordinate vectors. The repository handles efficient, ultra-fast proximity checks to discover nearby vehicles using `ST_DWithin` algorithms.
 * **60-Second Configuration Cache:** App rules, fares, and surge rates are loaded through an optimized memory cache. This shields your database from repetitive hits on everyday price requests.
 * **Write Audit Middleware:** A pipeline intercept log captures and records any modifying changes made by system administrators into a secure audit table.
+
+---
+
+## 🔑 Admin Panel Access
+
+`SettingsController` now requires `[Authorize(Roles = "admin")]` and reads the acting admin's id from the JWT (no more hardcoded mock GUID), so the admin panel needs a **real** login to do anything.
+
+**Dev admin credentials** (created by `08_seed_admin.sql`):
+* Email: `admin@biyahepro.local`
+* Password: `ChangeMe123!`
+
+Log in via `POST /api/auth/login` to get an access token, then send it as `Authorization: Bearer <token>` on `/api/settings` requests.
+
+⚠️ **Change this password before any real deployment.** To reset it, edit the literal password in `08_seed_admin.sql` and re-run the file — `ON CONFLICT (email) DO UPDATE` overwrites the stored hash.
+
+**Password policy (enforced on `POST /api/auth/register`):** minimum 8 characters, with at least one uppercase letter, one number, and one symbol. Enforced via a `RegularExpression` validation attribute on `RegisterRequest.Password` (`Models/User.cs`) — `[ApiController]` validates it automatically and returns `400` with a clear message if it fails. This is a create-time check only; there's no password-reset endpoint yet.
+
+> **Legacy note:** the React admin client (`ridehailing-client`) previously used a hardcoded 4-digit PIN screen (`PinOverlay.jsx`, PIN `1234`) that wasn't wired to any real auth. That PIN gate is deprecated — the client should call `/api/auth/login` and store the returned JWT instead.
 
 ---
 

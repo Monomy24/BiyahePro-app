@@ -1,7 +1,10 @@
+// File path in project: RideHailing.API/Models/Driver.cs
 // ============================================================
 // Models/Driver.cs
 // Driver + Vehicle domain models and related DTOs
 // ============================================================
+using System.ComponentModel.DataAnnotations;
+
 namespace RideHailing.API.Models;
 
 // ── Domain Models ─────────────────────────────────────────────
@@ -12,7 +15,7 @@ public class Driver
     public string   LicenseNumber         { get; set; } = string.Empty;
     public DateOnly LicenseExpiry         { get; set; }
 
-    // offline | available | on_trip | suspended
+    // offline | available | on_trip | suspended | banned
     public string   Status                { get; set; } = "offline";
 
     // Unpacked from PostGIS GEOGRAPHY column in repository
@@ -20,6 +23,12 @@ public class Driver
     public double?  Longitude             { get; set; }
 
     public decimal  Rating                { get; set; } = 5.00m;
+
+    // ── Driver Performance Index / Three-Strike Policy (BP §VI, §IX) ──
+    public bool      DpiReviewFlag        { get; set; }   // true when Rating < 4.2 — needs admin review
+    public short     StrikeCount          { get; set; }   // 1 = warning, 2 = suspended, 3 = banned
+    public DateTime? SuspendedUntil       { get; set; }   // set on strike 2 (7-day suspension); NULL for bans/no suspension
+
     public int      TotalTrips            { get; set; }
     public bool     IsDocumentsVerified   { get; set; }
     public DateTime CreatedAt             { get; set; }
@@ -44,10 +53,23 @@ public class Vehicle
     public string  Color        { get; set; } = string.Empty;
     public short   Year         { get; set; }
 
-    // sedan | suv | van | motorcycle
-    public string  VehicleType  { get; set; } = "sedan";
+    // motorcycle | motorcab (BiyahePro's only vehicle types — see BP §III)
+    public string  VehicleType  { get; set; } = "motorcycle";
     public bool    IsActive     { get; set; } = true;
     public DateTime CreatedAt   { get; set; }
+}
+
+// ── Driver Performance Index / Three-Strike Policy (BP §VI, §IX) ───
+public class DriverStrike
+{
+    public Guid     Id            { get; set; }
+    public Guid     DriverId      { get; set; }
+    public short    StrikeNumber  { get; set; }   // 1, 2, or 3
+    public string   Reason        { get; set; } = string.Empty;
+    public string   Consequence   { get; set; } = string.Empty;  // human-readable outcome, snapshotted at issue time
+    public Guid     IssuedBy      { get; set; }   // admin user id
+    public DateTime IssuedAt      { get; set; }
+    public DateTime? ExpiresAt    { get; set; }   // set for strike 2 (7-day suspension)
 }
 
 // ── Request DTOs ──────────────────────────────────────────────
@@ -72,7 +94,12 @@ public record RegisterDriverRequest(
     string   Model,
     string   Color,
     short    Year,
-    string   VehicleType = "sedan"
+    string   VehicleType = "motorcycle"
+);
+
+public record IssueStrikeRequest(
+    [property: Required(AllowEmptyStrings = false)]
+    string Reason
 );
 
 // ── Response DTOs ─────────────────────────────────────────────
@@ -94,5 +121,8 @@ public record DriverStatusResponse(
     double? Latitude,
     double? Longitude,
     decimal Rating,
-    int     TotalTrips
+    int     TotalTrips,
+    bool    DpiReviewFlag,
+    short   StrikeCount,
+    DateTime? SuspendedUntil
 );
