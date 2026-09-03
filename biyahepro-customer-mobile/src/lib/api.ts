@@ -5,6 +5,7 @@ import type {
   FareEstimate,
   FareEstimateRequest,
   PagedResult,
+  RateTripPayload,
   RegisterPayload,
   Trip,
 } from '@/src/types/api';
@@ -73,5 +74,12 @@ export const api = {
 
   getTripHistory(token: string, page = 1, pageSize = 20) {
     return request<PagedResult<Trip>>(`/api/trips/history?page=${page}&pageSize=${pageSize}`, {}, token);
+  },
+
+  rateTrip(tripId: string, payload: RateTripPayload, token: string) {
+    return request<{ message: string }>(`/api/trips/${tripId}/rate`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token);
   },
 };

@@ -1,3 +1,4 @@
+// File path in project: biyahepro-customer-mobile/src/types/api.ts
 export type AuthResponse = {
   accessToken: string;
   refreshToken: string;
@@ -36,6 +37,7 @@ export type BookTripRequest = FareEstimateRequest & {
   dropoffAddress: string;
   paymentMethod: 'cash' | 'gcash' | 'card';
   scheduledFor?: string | null;
+  vehicleType: 'motorcycle' | 'motorcab';
 };
 
 export type Trip = {
@@ -47,10 +49,17 @@ export type Trip = {
   status: string;
   fareAmount: number;
   paymentMethod: string;
+  vehicleType: 'motorcycle' | 'motorcab';
+  scheduledFor?: string | null;
   driverName?: string | null;
   plateNumber?: string | null;
   requestedAt: string;
   completedAt?: string | null;
+};
+
+export type RateTripPayload = {
+  score: number;
+  comment?: string;
 };
 
 export type PagedResult<T> = {

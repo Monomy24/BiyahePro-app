@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { api } from '@/src/lib/api';
 import { useAuth } from '@/src/context/AuthContext';
 import type { Trip } from '@/src/types/api';
@@ -33,6 +33,11 @@ export default function BookingsScreen() {
         <Text style={styles.address}>From: {trip.pickupAddress}</Text>
         <Text style={styles.address}>To: {trip.dropoffAddress}</Text>
         <Text style={styles.muted}>{new Date(trip.requestedAt).toLocaleString()}</Text>
+        {trip.status === 'completed' && (
+          <Pressable style={styles.rateButton} onPress={() => router.push({ pathname: '/booking/rate' as any, params: { tripId: trip.id } } as any)}>
+            <Text style={styles.rateButtonText}>Rate this trip</Text>
+          </Pressable>
+        )}
       </View>)}
     </ScrollView>
   );
@@ -42,4 +47,5 @@ const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background }, content: { padding: 18, gap: 12 }, center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   card: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, gap: 7, borderWidth: 1, borderColor: colors.border }, row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   status: { color: colors.brand, fontSize: 12, fontWeight: '900' }, fare: { fontSize: 18, fontWeight: '900', color: colors.text }, address: { color: colors.text }, muted: { color: colors.muted, fontSize: 13 }, error: { color: colors.danger }, empty: { paddingVertical: 80, alignItems: 'center' }, emptyTitle: { fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: 5 },
+  rateButton: { marginTop: 4, alignSelf: 'flex-start', backgroundColor: colors.brandSoft, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14 }, rateButtonText: { color: colors.brandDark, fontWeight: '800', fontSize: 13 },
 });

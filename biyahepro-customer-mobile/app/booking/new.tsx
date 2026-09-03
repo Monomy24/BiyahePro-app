@@ -1,5 +1,7 @@
+// File path in project: biyahepro-customer-mobile/app/booking/new.tsx
 import { useEffect, useMemo, useState } from 'react';
 import * as Location from 'expo-location';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import {
   ActivityIndicator,
@@ -51,6 +53,10 @@ export default function NewBookingScreen() {
   const [booking, setBooking] = useState(false);
   const [error, setError] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<BookTripRequest['paymentMethod']>('cash');
+  const [vehicleType, setVehicleType] = useState<BookTripRequest['vehicleType']>('motorcycle');
+  const [rideTiming, setRideTiming] = useState<'now' | 'later'>('now');
+  const [scheduledFor, setScheduledFor] = useState<Date | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
 
   const activePoint = target === 'pickup' ? pickup : dropoff;
   const hasAddresses = Boolean(pickup.address.trim() && dropoff.address.trim());
@@ -137,6 +143,23 @@ export default function NewBookingScreen() {
 
   async function confirmBooking() {
     if (!session || !estimate) return;
+
+    if (rideTiming === 'later') {
+      if (!scheduledFor) {
+        setError('Please choose a date and time for your scheduled ride.');
+        return;
+      }
+      // Mirrors the backend's ops.scheduled_min_lead_minutes check (default
+      // 30) — this is just a fast client-side check so the user doesn't
+      // wait on a round-trip for an obviously-too-soon time; the backend
+      // is still the source of truth and will reject it either way.
+      const minLeadMs = 30 * 60 * 1000;
+      if (scheduledFor.getTime() < Date.now() + minLeadMs) {
+        setError('Scheduled rides must be booked at least 30 minutes in advance.');
+        return;
+      }
+    }
+
     setBooking(true);
     setError('');
     try {
@@ -145,9 +168,19 @@ export default function NewBookingScreen() {
         pickupAddress: pickup.address.trim(),
         dropoffAddress: dropoff.address.trim(),
         paymentMethod,
+        vehicleType,
+        scheduledFor: rideTiming === 'later' && scheduledFor ? scheduledFor.toISOString() : null,
       }, session.accessToken);
 
-      router.replace({ pathname: '/booking/searching', params: { tripId: trip.id } });
+      if (rideTiming === 'later') {
+        Alert.alert(
+          'Ride scheduled',
+          `Your ${vehicleType} ride is scheduled for ${scheduledFor!.toLocaleString()}. We'll match you with a driver closer to your ride time.`
+        );
+        router.replace('/(tabs)/bookings');
+      } else {
+        router.replace({ pathname: '/booking/searching', params: { tripId: trip.id } });
+      }
     } catch (e) {
       Alert.alert('Booking failed', e instanceof Error ? e.message : 'Unable to book your ride.');
     } finally {
@@ -206,6 +239,57 @@ export default function NewBookingScreen() {
           <Text style={styles.coordinateText}>{activePoint.latitude.toFixed(6)}, {activePoint.longitude.toFixed(6)}</Text>
         </View>
 
+        <Text style={styles.sectionTitle}>Vehicle type</Text>
+        <View style={styles.paymentRow}>
+          {(['motorcycle', 'motorcab'] as const).map((type) => (
+            <Pressable
+              key={type}
+              style={[styles.payment, vehicleType === type && styles.paymentActive]}
+              onPress={() => setVehicleType(type)}
+            >
+              <Text style={[styles.paymentText, vehicleType === type && styles.paymentTextActive]}>
+                {type === 'motorcycle' ? 'Motorcycle' : 'Motorcab / Baobao'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <Text style={styles.sectionTitle}>When</Text>
+        <View style={styles.paymentRow}>
+          <Pressable
+            style={[styles.payment, rideTiming === 'now' && styles.paymentActive]}
+            onPress={() => { setRideTiming('now'); setScheduledFor(null); }}
+          >
+            <Text style={[styles.paymentText, rideTiming === 'now' && styles.paymentTextActive]}>Ride now</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.payment, rideTiming === 'later' && styles.paymentActive]}
+            onPress={() => setRideTiming('later')}
+          >
+            <Text style={[styles.paymentText, rideTiming === 'later' && styles.paymentTextActive]}>Schedule for later</Text>
+          </Pressable>
+        </View>
+
+        {rideTiming === 'later' && (
+          <Pressable style={styles.coordinateCard} onPress={() => setShowPicker(true)}>
+            <Text style={styles.coordinateTitle}>PICK-UP TIME</Text>
+            <Text style={styles.coordinateText}>
+              {scheduledFor ? scheduledFor.toLocaleString() : 'Tap to choose a date and time'}
+            </Text>
+          </Pressable>
+        )}
+        {showPicker && (
+          <DateTimePicker
+            value={scheduledFor || new Date(Date.now() + 45 * 60 * 1000)}
+            mode="datetime"
+            minimumDate={new Date(Date.now() + 30 * 60 * 1000)}
+            onChange={(_event, date) => {
+              setShowPicker(Platform.OS === 'ios');
+              if (date) setScheduledFor(date);
+            }}
+          />
+        )}
+
         <Text style={styles.sectionTitle}>Payment method</Text>
         <View style={styles.paymentRow}>
           {(['cash', 'gcash', 'card'] as const).map((method) => (
@@ -226,7 +310,7 @@ export default function NewBookingScreen() {
             <View style={styles.priceRow}><Text style={styles.muted}>Base fare</Text><Text style={styles.value}>₱{Number(estimate.baseFare).toFixed(2)}</Text></View>
             <View style={styles.priceRow}><Text style={styles.muted}>Booking fee</Text><Text style={styles.value}>₱{Number(estimate.bookingFee).toFixed(2)}</Text></View>
             <View style={[styles.priceRow, styles.total]}><Text style={styles.totalLabel}>Estimated total</Text><Text style={styles.totalValue}>₱{Number(estimate.estimatedTotal).toFixed(2)}</Text></View>
-            <AppButton title="Confirm ride" onPress={confirmBooking} loading={booking} />
+            <AppButton title={rideTiming === 'later' ? 'Schedule ride' : 'Confirm ride'} onPress={confirmBooking} loading={booking} />
           </View>
         )}
       </ScrollView>
@@ -240,7 +324,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontWeight: '900', color: colors.text },
   subtitle: { marginTop: 3, color: colors.muted },
   mapCard: { height: 330, borderRadius: 22, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, position: 'relative' },
-  map: { ...StyleSheet.absoluteFillObject },
+  map: { ...StyleSheet.absoluteFill },
   mapOverlay: { position: 'absolute', top: 12, left: 12, right: 12, alignItems: 'center' },
   mapHint: { backgroundColor: 'rgba(255,255,255,0.94)', color: colors.text, fontSize: 12, fontWeight: '700', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, overflow: 'hidden' },
   mapActions: { position: 'absolute', bottom: 12, left: 12 },
@@ -248,7 +332,7 @@ const styles = StyleSheet.create({
   locationIcon: { color: colors.brand, fontSize: 20, fontWeight: '900' },
   locationButtonText: { color: colors.text, fontWeight: '800', fontSize: 12 },
   disabled: { opacity: 0.65 },
-  mapLoading: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  mapLoading: { ...StyleSheet.absoluteFill, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', gap: 8 },
   mapLoadingText: { color: colors.muted },
   selectorRow: { gap: 8 },
   selector: { flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: colors.surface, borderRadius: 15, padding: 12, borderWidth: 1, borderColor: colors.border },

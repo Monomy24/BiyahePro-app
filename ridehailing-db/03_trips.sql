@@ -1,4 +1,5 @@
 // File path in project: ridehailing-db/03_trips.sql
+// File path in project: ridehailing-db/03_trips.sql
 -- ============================================================
 -- 03_trips.sql
 -- Trip lifecycle: requested → accepted → en_route →
@@ -28,6 +29,12 @@ CREATE TABLE IF NOT EXISTS trips (
                                         'completed',
                                         'cancelled'
                                     )),
+
+    -- Requested ride type (BP §III "Vehicle Options") — motorcycle (single
+    -- ride) or motorcab/baobao (multi-passenger). A driver can only accept
+    -- a trip whose vehicle_type matches their own registered vehicle.
+    vehicle_type        TEXT       NOT NULL DEFAULT 'motorcycle'
+                                    CHECK (vehicle_type IN ('motorcycle', 'motorcab')),
 
     -- Scheduled rides (BP §III) — set when booked in advance; a background
     -- sweep flips status 'scheduled' -> 'requested' once this arrives.

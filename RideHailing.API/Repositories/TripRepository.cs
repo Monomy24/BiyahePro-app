@@ -1,4 +1,5 @@
 // File path in project: RideHailing.API/Repositories/TripRepository.cs
+// File path in project: RideHailing.API/Repositories/TripRepository.cs
 using Dapper;
 using Npgsql;
 using RideHailing.API.Models;
@@ -13,6 +14,8 @@ public interface ITripRepository
     Task<PagedResult<Trip>> GetHistoryAsync(Guid userId, string role, int page, int pageSize);
     Task<List<Trip>> GetDueScheduledTripsAsync();
     Task ActivateScheduledTripAsync(Guid tripId);
+    Task<bool> HasRatingAsync(Guid tripId, Guid ratedBy);
+    Task AddRatingAsync(Guid tripId, Guid ratedBy, Guid ratedUser, int score, string? comment);
 }
 
 public class TripRepository(IConfiguration config) : ITripRepository
@@ -38,13 +41,13 @@ public class TripRepository(IConfiguration config) : ITripRepository
             INSERT INTO trips (
                 customer_id, pickup_location, dropoff_location,
                 pickup_address, dropoff_address, payment_method,
-                base_fare, distance_fare, surge_multiplier, booking_fee, fare_amount, status, scheduled_for
+                base_fare, distance_fare, surge_multiplier, booking_fee, fare_amount, status, scheduled_for, vehicle_type
             ) VALUES (
                 @CustomerId,
                 ST_SetSRID(ST_MakePoint(@PickupLongitude, @PickupLatitude), 4326)::geography,
                 ST_SetSRID(ST_MakePoint(@DropoffLongitude, @DropoffLatitude), 4326)::geography,
                 @PickupAddress, @DropoffAddress, @PaymentMethod,
-                @BaseFare, @DistanceFare, @SurgeMultiplier, @BookingFee, @FareAmount, @Status, @ScheduledFor
+                @BaseFare, @DistanceFare, @SurgeMultiplier, @BookingFee, @FareAmount, @Status, @ScheduledFor, @VehicleType
             )
             RETURNING *, {LatLngSelectExpr}";
         return await db.QuerySingleAsync<Trip>(sql, trip);
@@ -130,5 +133,32 @@ public class TripRepository(IConfiguration config) : ITripRepository
         await db.ExecuteAsync(
             "UPDATE trips SET status = 'requested' WHERE id = @Id AND status = 'scheduled'",
             new { Id = tripId });
+    }
+
+    // ── Ratings (BP §III step 7 "Rating & Feedback System") ────
+
+    // UNIQUE (trip_id, rated_by) on the ratings table already stops a
+    // double-submit at the DB level, but we check first so the service
+    // can return a clean "already rated" result instead of a raw
+    // constraint-violation exception.
+    public async Task<bool> HasRatingAsync(Guid tripId, Guid ratedBy)
+    {
+        using var db = Connection();
+        var count = await db.QuerySingleAsync<int>(
+            "SELECT COUNT(*) FROM ratings WHERE trip_id = @TripId AND rated_by = @RatedBy",
+            new { TripId = tripId, RatedBy = ratedBy });
+        return count > 0;
+    }
+
+    // Insert only — trg_update_driver_rating (04_payments_ratings.sql)
+    // recomputes drivers.rating / dpi_review_flag automatically when the
+    // rated user turns out to be a driver.
+    public async Task AddRatingAsync(Guid tripId, Guid ratedBy, Guid ratedUser, int score, string? comment)
+    {
+        using var db = Connection();
+        await db.ExecuteAsync(
+            @"INSERT INTO ratings (trip_id, rated_by, rated_user, score, comment)
+              VALUES (@TripId, @RatedBy, @RatedUser, @Score, @Comment)",
+            new { TripId = tripId, RatedBy = ratedBy, RatedUser = ratedUser, Score = score, Comment = comment });
     }
 }

@@ -1,4 +1,5 @@
 // File path in project: RideHailing.API/Models/Trip.cs
+// File path in project: RideHailing.API/Models/Trip.cs
 // ============================================================
 // Models/Trip.cs
 // Trip domain model + booking/fare request & response DTOs
@@ -53,6 +54,10 @@ public class Trip
     // "requested" once ScheduledFor arrives, entering normal dispatch.
     public DateTime? ScheduledFor    { get; set; }
 
+    // motorcycle | motorcab (BP §III "Vehicle Options") — requested ride
+    // type. AcceptAsync rejects a driver whose registered vehicle doesn't match.
+    public string    VehicleType     { get; set; } = "motorcycle";
+
     // ── State timestamps ──────────────────────────────────────
     public DateTime  RequestedAt     { get; set; }
     public DateTime? AcceptedAt      { get; set; }
@@ -79,7 +84,8 @@ public record BookTripRequest(
     string PickupAddress,
     string DropoffAddress,
     string PaymentMethod = "cash",
-    DateTime? ScheduledFor = null
+    DateTime? ScheduledFor = null,
+    string VehicleType = "motorcycle"
 );
 
 public record FareEstimateRequest(
@@ -92,6 +98,12 @@ public record FareEstimateRequest(
 public record TripStatusUpdate(
     Guid   TripId,
     string Status
+);
+
+// ── Ratings (BP §III step 7 "Rating & Feedback System") ────────
+public record RateTripRequest(
+    int     Score,
+    string? Comment = null
 );
 
 // ── Response DTOs ─────────────────────────────────────────────
@@ -117,3 +129,5 @@ public record TripSummaryResponse(
     DateTime RequestedAt,
     DateTime? CompletedAt
 );
+
+public record RatingResult(bool Success, string? Error);

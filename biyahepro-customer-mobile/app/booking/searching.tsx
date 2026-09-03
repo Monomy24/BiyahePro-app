@@ -1,35 +1,50 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/src/context/AuthContext';
 import { api } from '@/src/lib/api';
+import { useTripUpdates } from '@/src/lib/tripHub';
 import { colors } from '@/src/theme/colors';
+
+const LIVE_STATUSES = ['accepted', 'en_route', 'arrived', 'in_progress'];
 
 export default function SearchingForDriverScreen() {
   const { session } = useAuth();
   const { tripId } = useLocalSearchParams<{ tripId?: string }>();
-  const [status, setStatus] = useState('requested');
-  const [checking, setChecking] = useState(false);
+  const { status: pushedStatus, connectionState } = useTripUpdates(tripId, session?.accessToken, 'requested');
+  const [seedStatus, setSeedStatus] = useState<string | null>(null);
+  const navigatedRef = useRef(false);
 
+  // One-time catch-up: covers a status change that happened in the gap
+  // between the booking POST and the socket finishing its handshake.
+  // Everything after that is driven live by the hub above.
   useEffect(() => {
-    if (!session) return;
+    if (!session || !tripId) return;
     let active = true;
-    const check = async () => {
-      setChecking(true);
-      try {
-        const result = await api.getTripHistory(session.accessToken, 1, 20);
+    api.getTripHistory(session.accessToken, 1, 20)
+      .then((result) => {
         const trip = result.items.find((item) => item.id === tripId);
-        if (active && trip) setStatus(trip.status);
-      } finally {
-        if (active) setChecking(false);
-      }
-    };
-    check();
-    const timer = setInterval(check, 5000);
-    return () => { active = false; clearInterval(timer); };
+        if (active && trip) setSeedStatus(trip.status);
+      })
+      .catch(() => {});
+    return () => { active = false; };
   }, [session, tripId]);
 
-  const assigned = ['accepted', 'en_route', 'arrived', 'in_progress'].includes(status);
+  const status = pushedStatus === 'requested' && seedStatus ? seedStatus : pushedStatus;
+
+  useEffect(() => {
+    if (navigatedRef.current || !tripId) return;
+    if (status === 'completed') {
+      navigatedRef.current = true;
+      router.replace({ pathname: '/booking/rate' as any, params: { tripId } } as any);
+    } else if (status === 'cancelled') {
+      navigatedRef.current = true;
+      router.replace('/(tabs)/bookings');
+    }
+  }, [status, tripId]);
+
+  const currentStatus = status ?? 'requested';
+  const assigned = LIVE_STATUSES.includes(currentStatus);
 
   return (
     <View style={styles.page}>
@@ -38,8 +53,17 @@ export default function SearchingForDriverScreen() {
       <Text style={styles.subtitle}>{assigned ? 'Your ride has been accepted. Your driver is on the way.' : 'We sent your booking to available drivers nearby.'}</Text>
 
       <View style={styles.statusCard}>
-        <View style={styles.statusDot} />
-        <View style={styles.statusText}><Text style={styles.statusTitle}>{status.replace('_', ' ').toUpperCase()}</Text><Text style={styles.statusCopy}>{checking ? 'Updating ride status…' : assigned ? 'Ride accepted' : 'Waiting for a driver to accept your booking'}</Text></View>
+        <View style={[styles.statusDot, connectionState !== 'connected' && styles.statusDotMuted]} />
+        <View style={styles.statusText}>
+          <Text style={styles.statusTitle}>{currentStatus.replace('_', ' ').toUpperCase()}</Text>
+          <Text style={styles.statusCopy}>
+            {connectionState === 'connecting'
+              ? 'Connecting to live tracking…'
+              : connectionState === 'disconnected'
+                ? 'Reconnecting…'
+                : assigned ? 'Ride accepted' : 'Waiting for a driver to accept your booking'}
+          </Text>
+        </View>
       </View>
 
       <View style={styles.actions}>
@@ -57,6 +81,7 @@ const styles = StyleSheet.create({
   subtitle: { marginTop: 8, color: colors.muted, textAlign: 'center', lineHeight: 21, maxWidth: 330 },
   statusCard: { width: '100%', marginTop: 26, flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: 16 },
   statusDot: { width: 13, height: 13, borderRadius: 7, backgroundColor: colors.brand },
+  statusDotMuted: { backgroundColor: colors.muted },
   statusText: { flex: 1 },
   statusTitle: { color: colors.brandDark, fontWeight: '900', fontSize: 11, letterSpacing: 1 },
   statusCopy: { color: colors.muted, marginTop: 4, lineHeight: 18 },

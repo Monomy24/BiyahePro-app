@@ -62,6 +62,17 @@ public class TripsController(ITripService tripService, IFareService fareService)
         return Ok(trip);
     }
 
+    
+
+    // POST: api/trips/{id}/rate (Either side rates the other once a trip is completed)
+    [HttpPost("{id:guid}/rate")]
+    public async Task<IActionResult> Rate(Guid id, [FromBody] RateTripRequest req)
+    {
+        var result = await tripService.RateTripAsync(id, CurrentUserId, CurrentRole, req.Score, req.Comment);
+        if (!result.Success) return BadRequest(new { message = result.Error });
+        return Ok(new { message = "Rating submitted." });
+    }
+
     // GET: api/trips/history (Fetches paginated historic logs for customers/drivers)
     [HttpGet("history")]
     [AllowAnonymous]

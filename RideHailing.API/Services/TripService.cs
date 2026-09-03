@@ -1,4 +1,5 @@
 // File path in project: RideHailing.API/Services/TripService.cs
+// File path in project: RideHailing.API/Services/TripService.cs
 using Microsoft.AspNetCore.SignalR;
 using RideHailing.API.Hubs;
 using RideHailing.API.Models;
@@ -13,7 +14,9 @@ public interface ITripService
     Task<Trip?> UpdateStatusAsync(Guid tripId, Guid actorId, string newStatus);
     Task<Trip?> CancelAsync(Guid tripId, Guid actorId, string role, string reason);
     Task<PagedResult<Trip>> GetTripHistoryAsync(Guid userId, string role, int page, int pageSize);
+    Task<RatingResult> RateTripAsync(Guid tripId, Guid actorId, string role, int score, string? comment);
     Task<List<NearbyDriverResponse>> GetNearbyDriversAsync(double lat, double lng);
+    
     Task ActivateDueScheduledTripsAsync();
 }
 
@@ -37,6 +40,8 @@ public class TripService(
 
     public async Task<Trip?> BookAsync(Guid customerId, BookTripRequest req)
     {
+        if (req.VehicleType != "motorcycle" && req.VehicleType != "motorcab") return null;
+
         if (req.ScheduledFor.HasValue)
         {
             var featureEnabled = await settings.GetBoolAsync(SettingKeys.FeatureScheduled, false);
@@ -70,6 +75,7 @@ public class TripService(
             // 'requested' as before. See ActivateDueScheduledTripsAsync.
             Status           = req.ScheduledFor.HasValue ? "scheduled" : "requested",
             ScheduledFor     = req.ScheduledFor,
+            VehicleType      = req.VehicleType,
             RequestedAt      = DateTime.UtcNow
         };
 
@@ -96,7 +102,8 @@ public class TripService(
             PickupLatitude   = trip.PickupLatitude,
             PickupLongitude  = trip.PickupLongitude,
             FareAmount       = trip.FareAmount,
-            PaymentMethod    = trip.PaymentMethod
+            PaymentMethod    = trip.PaymentMethod,
+            VehicleType      = trip.VehicleType
         });
     }
 
@@ -115,22 +122,45 @@ public class TripService(
         }
     }
 
-    public async Task<Trip?> AcceptAsync(Guid tripId, Guid driverId)
+    public async Task<Trip?> AcceptAsync(Guid tripId, Guid driverUserId)
     {
         var trip = await tripRepo.GetByIdAsync(tripId);
         if (trip == null || trip.Status != "requested") return null;
 
-        trip.DriverId   = driverId;
+        // BUG FIX: driverUserId here is the authenticated user's id (from
+        // the JWT via TripsController.CurrentUserId) — NOT drivers.id,
+        // which is its own PK on a separate table. This method previously
+        // stored the raw user id directly as trip.DriverId and passed it
+        // straight to driverRepo.UpdateStatusAsync, so:
+        //   - trip.DriverId never actually matched any drivers row
+        //     (GetHistoryAsync's `LEFT JOIN drivers d ON d.id = t.driver_id`
+        //     would never find the driver, silently dropping DriverName)
+        //   - driverRepo.UpdateStatusAsync(driverId, "on_trip") matched
+        //     zero rows, so a driver's status never actually flipped to
+        //     on_trip — and, since trip.DriverId carried the same wrong
+        //     value forward, UpdateStatusAsync/CancelAsync's "available"
+        //     resets on completion/cancellation silently did nothing too.
+        // Resolving the real driver row here fixes all three call sites.
+        var driver = await driverRepo.GetByUserIdAsync(driverUserId);
+        if (driver == null) return null;
+
+        // Vehicle-type match (BP §III "Vehicle Options") — a driver can
+        // only accept a trip requesting the vehicle type they're actually
+        // registered with (motorcycle vs. motorcab/baobao).
+        var vehicle = await driverRepo.GetVehicleAsync(driver.Id);
+        if (vehicle == null || vehicle.VehicleType != trip.VehicleType) return null;
+
+        trip.DriverId   = driver.Id;
         trip.Status     = "accepted";
         trip.AcceptedAt = DateTime.UtcNow;
 
         await tripRepo.UpdateAsync(trip);
-        await driverRepo.UpdateStatusAsync(driverId, "on_trip");
+        await driverRepo.UpdateStatusAsync(driver.Id, "on_trip");
 
         await hub.Clients.Group($"user_{trip.CustomerId}").SendAsync("TripAccepted", new
         {
             TripId   = trip.Id,
-            DriverId = driverId
+            DriverId = driver.Id
         });
 
         return trip;
@@ -203,6 +233,41 @@ public class TripService(
 
     public async Task<PagedResult<Trip>> GetTripHistoryAsync(Guid userId, string role, int page, int pageSize)
         => await tripRepo.GetHistoryAsync(userId, role, page, pageSize);
+
+    public async Task<RatingResult> RateTripAsync(Guid tripId, Guid actorId, string role, int score, string? comment)
+    {
+        if (score < 1 || score > 5)
+            return new RatingResult(false, "Rating must be between 1 and 5.");
+
+        var trip = await tripRepo.GetByIdAsync(tripId);
+        if (trip == null)
+            return new RatingResult(false, "Trip not found.");
+
+        if (trip.Status != "completed")
+            return new RatingResult(false, "Only completed trips can be rated.");
+
+        var isCustomer = trip.CustomerId == actorId;
+        var isDriver = trip.DriverId.HasValue && trip.DriverId.Value == actorId;
+
+        if (role == "customer" && !isCustomer)
+            return new RatingResult(false, "Customers can only rate the driver.");
+
+        if (role == "driver" && !isDriver)
+            return new RatingResult(false, "Drivers can only rate the customer.");
+
+        if (role != "customer" && role != "driver")
+            return new RatingResult(false, "Invalid role.");
+
+        if (await tripRepo.HasRatingAsync(tripId, actorId))
+            return new RatingResult(false, "You have already rated this trip.");
+
+        var ratedUser = role == "customer" ? trip.DriverId : trip.CustomerId;
+        if (!ratedUser.HasValue)
+            return new RatingResult(false, "This trip has no eligible user to rate.");
+
+        await tripRepo.AddRatingAsync(tripId, actorId, ratedUser.Value, score, comment);
+        return new RatingResult(true, null);
+    }
 
     public async Task<List<NearbyDriverResponse>> GetNearbyDriversAsync(double lat, double lng)
     {
