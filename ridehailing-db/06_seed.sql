@@ -1,4 +1,4 @@
-// File path in project: ridehailing-db/06_seed.sql
+-- File path in project: ridehailing-db/06_seed.sql
 -- ============================================================
 -- 06_seed.sql
 -- Default app_settings rows — edit these from the admin panel,

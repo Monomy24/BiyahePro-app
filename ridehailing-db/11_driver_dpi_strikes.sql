@@ -1,4 +1,4 @@
-// File path in project: ridehailing-db/11_driver_dpi_strikes.sql
+-- File path in project: ridehailing-db/11_driver_dpi_strikes.sql
 -- ============================================================
 -- 11_driver_dpi_strikes.sql
 -- Migration: Driver Performance Index + Three-Strike Policy

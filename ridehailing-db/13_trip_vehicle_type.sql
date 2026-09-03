@@ -1,4 +1,4 @@
-// File path in project: ridehailing-db/13_trip_vehicle_type.sql
+-- File path in project: ridehailing-db/13_trip_vehicle_type.sql
 -- ============================================================
 -- 13_trip_vehicle_type.sql
 -- Adds requested vehicle type to trips (BP §III "Vehicle Options" —

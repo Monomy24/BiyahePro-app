@@ -99,7 +99,7 @@ builder.Services.AddScoped<IFareService,    FareService>();
 builder.Services.AddScoped<IDriverService,  DriverService>();
 
 // Singleton: SettingsService has a shared in-memory cache
-builder.Services.AddSingleton<ISettingsService, SettingsService>();
+builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddHostedService<ScheduledTripActivationService>();
 
 // ── Build ─────────────────────────────────────────────────────

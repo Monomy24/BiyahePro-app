@@ -34,6 +34,34 @@ public class TripRepository(IConfiguration config) : ITripRepository
         ST_Y(dropoff_location::geometry) AS dropoff_latitude,
         ST_X(dropoff_location::geometry) AS dropoff_longitude";
 
+    // Every trips column except pickup_location/dropoff_location. Those two
+    // are raw PostGIS `geography` values — selecting them via `t.*`/`RETURNING *`
+    // makes Npgsql try to materialize a `geography` into the untyped object
+    // slot Dapper reads through, which throws:
+    //   InvalidCastException: Reading as 'System.Object' is not supported
+    //   for fields having DataTypeName 'public.geography'
+    // We only ever need them as lat/lng anyway (see LatLngSelectExpr above),
+    // so they're deliberately left out here rather than mapped.
+    private const string TripColumns = @"
+        t.id, t.customer_id, t.driver_id, t.pickup_address, t.dropoff_address,
+        t.status, t.vehicle_type, t.scheduled_for,
+        t.base_fare, t.distance_fare, t.time_fare, t.surge_multiplier, t.booking_fee, t.fare_amount,
+        t.distance_km, t.duration_minutes,
+        t.payment_method, t.payment_status,
+        t.cancelled_by, t.cancel_reason,
+        t.requested_at, t.accepted_at, t.en_route_at, t.arrived_at, t.started_at, t.completed_at, t.cancelled_at";
+
+    // Same list without the "t." alias, for the INSERT ... RETURNING clause
+    // (CreateAsync inserts directly into `trips`, unaliased).
+    private const string TripColumnsUnaliased = @"
+        id, customer_id, driver_id, pickup_address, dropoff_address,
+        status, vehicle_type, scheduled_for,
+        base_fare, distance_fare, time_fare, surge_multiplier, booking_fee, fare_amount,
+        distance_km, duration_minutes,
+        payment_method, payment_status,
+        cancelled_by, cancel_reason,
+        requested_at, accepted_at, en_route_at, arrived_at, started_at, completed_at, cancelled_at";
+
     public async Task<Trip> CreateAsync(Trip trip)
     {
         using var db = Connection();
@@ -49,14 +77,14 @@ public class TripRepository(IConfiguration config) : ITripRepository
                 @PickupAddress, @DropoffAddress, @PaymentMethod,
                 @BaseFare, @DistanceFare, @SurgeMultiplier, @BookingFee, @FareAmount, @Status, @ScheduledFor, @VehicleType
             )
-            RETURNING *, {LatLngSelectExpr}";
+            RETURNING {TripColumnsUnaliased}, {LatLngSelectExpr}";
         return await db.QuerySingleAsync<Trip>(sql, trip);
     }
 
     public async Task<Trip?> GetByIdAsync(Guid id)
     {
         using var db = Connection();
-        var sql = $"SELECT t.*, {LatLngSelectExpr} FROM trips t WHERE t.id = @Id";
+        var sql = $"SELECT {TripColumns}, {LatLngSelectExpr} FROM trips t WHERE t.id = @Id";
         return await db.QuerySingleOrDefaultAsync<Trip>(sql, new { Id = id });
     }
 
@@ -94,7 +122,7 @@ public class TripRepository(IConfiguration config) : ITripRepository
         var column = role == "driver" ? "driver_id" : "customer_id";
         var total = await db.QuerySingleAsync<int>($"SELECT COUNT(*) FROM trips WHERE {column} = @UserId", new { UserId = userId });
         var sql = $@"
-            SELECT t.*, {LatLngSelectExpr},
+            SELECT {TripColumns}, {LatLngSelectExpr},
                 uc.full_name AS customer_name,
                 ud.full_name AS driver_name
             FROM trips t
@@ -116,7 +144,7 @@ public class TripRepository(IConfiguration config) : ITripRepository
     {
         using var db = Connection();
         var sql = $@"
-            SELECT t.*, {LatLngSelectExpr}
+            SELECT {TripColumns}, {LatLngSelectExpr}
             FROM trips t
             WHERE t.status = 'scheduled' AND t.scheduled_for <= NOW()
             ORDER BY t.scheduled_for ASC";

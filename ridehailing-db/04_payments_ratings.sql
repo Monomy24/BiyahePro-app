@@ -1,4 +1,4 @@
-// File path in project: ridehailing-db/04_payments_ratings.sql
+-- File path in project: ridehailing-db/04_payments_ratings.sql
 -- ============================================================
 -- 04_payments_ratings.sql
 -- ============================================================

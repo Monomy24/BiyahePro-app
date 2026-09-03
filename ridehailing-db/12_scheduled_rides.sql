@@ -1,4 +1,4 @@
-// File path in project: ridehailing-db/12_scheduled_rides.sql
+-- File path in project: ridehailing-db/12_scheduled_rides.sql
 -- ============================================================
 -- 12_scheduled_rides.sql
 -- Scheduled Ride Booking (BP §III "Future Product/Service Expansion")

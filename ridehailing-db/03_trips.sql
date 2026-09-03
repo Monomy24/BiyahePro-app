@@ -1,5 +1,5 @@
-// File path in project: ridehailing-db/03_trips.sql
-// File path in project: ridehailing-db/03_trips.sql
+-- File path in project: ridehailing-db/03_trips.sql
+-- File path in project: ridehailing-db/03_trips.sql
 -- ============================================================
 -- 03_trips.sql
 -- Trip lifecycle: requested → accepted → en_route →

@@ -1,4 +1,4 @@
-// File path in project: ridehailing-db/02_drivers_vehicles.sql
+-- File path in project: ridehailing-db/02_drivers_vehicles.sql
 -- ============================================================
 -- 02_drivers_vehicles.sql
 -- Driver profiles, vehicles, and live location tracking
