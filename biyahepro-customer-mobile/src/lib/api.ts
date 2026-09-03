@@ -1,0 +1,77 @@
+import { Platform } from 'react-native';
+import type {
+  AuthResponse,
+  BookTripRequest,
+  FareEstimate,
+  FareEstimateRequest,
+  PagedResult,
+  RegisterPayload,
+  Trip,
+} from '@/src/types/api';
+
+const fallbackBaseUrl = Platform.select({
+  android: 'http://10.0.2.2:5000',
+  ios: 'http://localhost:5000',
+  default: 'http://localhost:5000',
+});
+
+export const API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL || fallbackBaseUrl || '').replace(/\/$/, '');
+
+async function readError(response: Response) {
+  try {
+    const body = await response.json();
+    if (typeof body === 'string') return body;
+    return body?.message || body?.title || 'Request failed.';
+  } catch {
+    return `Request failed with status ${response.status}.`;
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}, token?: string) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init.headers || {}),
+    },
+  });
+
+  if (!response.ok) throw new Error(await readError(response));
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
+
+export const api = {
+  login(email: string, password: string) {
+    return request<AuthResponse>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+  },
+
+  register(payload: RegisterPayload) {
+    return request<AuthResponse>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ ...payload, role: 'customer' }),
+    });
+  },
+
+  estimateFare(payload: FareEstimateRequest) {
+    return request<FareEstimate>('/api/trips/estimate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  bookTrip(payload: BookTripRequest, token: string) {
+    return request<Trip>('/api/trips', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token);
+  },
+
+  getTripHistory(token: string, page = 1, pageSize = 20) {
+    return request<PagedResult<Trip>>(`/api/trips/history?page=${page}&pageSize=${pageSize}`, {}, token);
+  },
+};

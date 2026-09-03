@@ -1,0 +1,280 @@
+import { useEffect, useMemo, useState } from 'react';
+import * as Location from 'expo-location';
+import { router } from 'expo-router';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import MapView, { Marker, Region } from 'react-native-maps';
+import { AppButton } from '@/src/components/AppButton';
+import { AppInput } from '@/src/components/AppInput';
+import { api } from '@/src/lib/api';
+import { useAuth } from '@/src/context/AuthContext';
+import type { FareEstimate, BookTripRequest } from '@/src/types/api';
+import { colors } from '@/src/theme/colors';
+
+type Point = { latitude: number; longitude: number; address: string };
+type MapTarget = 'pickup' | 'dropoff';
+
+const DEFAULT_PICKUP: Point = { latitude: 8.6555, longitude: 123.4243, address: '' };
+const DEFAULT_DROPOFF: Point = { latitude: 8.668, longitude: 123.417, address: '' };
+
+function formatAddress(address?: Location.LocationGeocodedAddress) {
+  if (!address) return '';
+  return [address.name, address.street, address.city, address.region]
+    .filter(Boolean)
+    .filter((value, index, all) => all.indexOf(value) === index)
+    .join(', ');
+}
+
+export default function NewBookingScreen() {
+  const { session } = useAuth();
+  const [pickup, setPickup] = useState<Point>(DEFAULT_PICKUP);
+  const [dropoff, setDropoff] = useState<Point>(DEFAULT_DROPOFF);
+  const [target, setTarget] = useState<MapTarget>('pickup');
+  const [region, setRegion] = useState<Region>({
+    ...DEFAULT_PICKUP,
+    latitudeDelta: 0.025,
+    longitudeDelta: 0.025,
+  });
+  const [locationLoading, setLocationLoading] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
+  const [estimate, setEstimate] = useState<FareEstimate | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [booking, setBooking] = useState(false);
+  const [error, setError] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<BookTripRequest['paymentMethod']>('cash');
+
+  const activePoint = target === 'pickup' ? pickup : dropoff;
+  const hasAddresses = Boolean(pickup.address.trim() && dropoff.address.trim());
+
+  useEffect(() => {
+    loadCurrentLocation();
+  }, []);
+
+  async function reverseGeocode(latitude: number, longitude: number) {
+    try {
+      const result = await Location.reverseGeocodeAsync({ latitude, longitude });
+      return formatAddress(result[0]) || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+    } catch {
+      return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+    }
+  }
+
+  async function loadCurrentLocation() {
+    setLocationLoading(true);
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        setError('Location permission was not granted. You can still select both points manually on the map.');
+        return;
+      }
+
+      const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const point = {
+        latitude: current.coords.latitude,
+        longitude: current.coords.longitude,
+        address: await reverseGeocode(current.coords.latitude, current.coords.longitude),
+      };
+      setPickup(point);
+      setRegion({ ...point, latitudeDelta: 0.02, longitudeDelta: 0.02 });
+    } catch {
+      setError('We could not read your current location. Please choose your pickup on the map.');
+    } finally {
+      setLocationLoading(false);
+    }
+  }
+
+  async function selectPoint(latitude: number, longitude: number) {
+    setError('');
+    const address = await reverseGeocode(latitude, longitude);
+    const point = { latitude, longitude, address };
+    if (target === 'pickup') setPickup(point);
+    else setDropoff(point);
+    setEstimate(null);
+  }
+
+  function focusPoint(point: Point) {
+    setRegion({ ...point, latitudeDelta: 0.02, longitudeDelta: 0.02 });
+  }
+
+  function setAddress(targetPoint: MapTarget, value: string) {
+    setEstimate(null);
+    if (targetPoint === 'pickup') setPickup((p) => ({ ...p, address: value }));
+    else setDropoff((p) => ({ ...p, address: value }));
+  }
+
+  const coordinates = useMemo(() => ({
+    pickupLatitude: pickup.latitude,
+    pickupLongitude: pickup.longitude,
+    dropoffLatitude: dropoff.latitude,
+    dropoffLongitude: dropoff.longitude,
+  }), [pickup, dropoff]);
+
+  async function getEstimate() {
+    setError('');
+    if (!hasAddresses) {
+      setError('Please provide both pickup and destination addresses.');
+      return;
+    }
+    setLoading(true);
+    setEstimate(null);
+    try {
+      setEstimate(await api.estimateFare(coordinates));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to estimate fare.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function confirmBooking() {
+    if (!session || !estimate) return;
+    setBooking(true);
+    setError('');
+    try {
+      const trip = await api.bookTrip({
+        ...coordinates,
+        pickupAddress: pickup.address.trim(),
+        dropoffAddress: dropoff.address.trim(),
+        paymentMethod,
+      }, session.accessToken);
+
+      router.replace({ pathname: '/booking/searching', params: { tripId: trip.id } });
+    } catch (e) {
+      Alert.alert('Booking failed', e instanceof Error ? e.message : 'Unable to book your ride.');
+    } finally {
+      setBooking(false);
+    }
+  }
+
+  return (
+    <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View>
+          <Text style={styles.title}>Book a ride</Text>
+          <Text style={styles.subtitle}>Set your pickup and destination on the map.</Text>
+        </View>
+
+        <View style={styles.mapCard}>
+          <MapView
+            style={styles.map}
+            region={region}
+            showsUserLocation
+            showsMyLocationButton={false}
+            onMapReady={() => setMapReady(true)}
+            onLongPress={(event) => selectPoint(event.nativeEvent.coordinate.latitude, event.nativeEvent.coordinate.longitude)}
+          >
+            <Marker coordinate={pickup} title="Pickup" description={pickup.address || 'Pickup location'} pinColor={colors.brand} />
+            <Marker coordinate={dropoff} title="Destination" description={dropoff.address || 'Destination'} pinColor="#E85D5D" />
+          </MapView>
+          <View style={styles.mapOverlay} pointerEvents="none">
+            <Text style={styles.mapHint}>Long-press anywhere to place the {target === 'pickup' ? 'pickup' : 'destination'} pin.</Text>
+          </View>
+          <View style={styles.mapActions}>
+            <Pressable style={[styles.locationButton, locationLoading && styles.disabled]} onPress={loadCurrentLocation} disabled={locationLoading}>
+              {locationLoading ? <ActivityIndicator size="small" color={colors.brand} /> : <Text style={styles.locationIcon}>⌖</Text>}
+              <Text style={styles.locationButtonText}>Use my location</Text>
+            </Pressable>
+          </View>
+          {!mapReady && <View style={styles.mapLoading}><ActivityIndicator color={colors.brand} /><Text style={styles.mapLoadingText}>Loading map…</Text></View>}
+        </View>
+
+        <View style={styles.selectorRow}>
+          <Pressable style={[styles.selector, target === 'pickup' && styles.selectorActive]} onPress={() => { setTarget('pickup'); focusPoint(pickup); }}>
+            <View style={[styles.dot, { backgroundColor: colors.brand }]} />
+            <View style={styles.selectorText}><Text style={styles.selectorLabel}>PICKUP</Text><Text numberOfLines={1} style={styles.selectorValue}>{pickup.address || 'Choose pickup point'}</Text></View>
+          </Pressable>
+          <Pressable style={[styles.selector, target === 'dropoff' && styles.selectorActive]} onPress={() => { setTarget('dropoff'); focusPoint(dropoff); }}>
+            <View style={[styles.dot, { backgroundColor: '#E85D5D' }]} />
+            <View style={styles.selectorText}><Text style={styles.selectorLabel}>DESTINATION</Text><Text numberOfLines={1} style={styles.selectorValue}>{dropoff.address || 'Choose destination'}</Text></View>
+          </Pressable>
+        </View>
+
+        <AppInput label="Pickup address" value={pickup.address} onChangeText={(v) => setAddress('pickup', v)} placeholder="Pickup address" />
+        <AppInput label="Destination" value={dropoff.address} onChangeText={(v) => setAddress('dropoff', v)} placeholder="Where are you going?" />
+
+        <View style={styles.coordinateCard}>
+          <Text style={styles.coordinateTitle}>{target === 'pickup' ? 'Pickup coordinates' : 'Destination coordinates'}</Text>
+          <Text style={styles.coordinateText}>{activePoint.latitude.toFixed(6)}, {activePoint.longitude.toFixed(6)}</Text>
+        </View>
+
+        <Text style={styles.sectionTitle}>Payment method</Text>
+        <View style={styles.paymentRow}>
+          {(['cash', 'gcash', 'card'] as const).map((method) => (
+            <Pressable key={method} style={[styles.payment, paymentMethod === method && styles.paymentActive]} onPress={() => setPaymentMethod(method)}>
+              <Text style={[styles.paymentText, paymentMethod === method && styles.paymentTextActive]}>{method.toUpperCase()}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {!!error && <Text style={styles.error}>{error}</Text>}
+        <AppButton title="Estimate fare" onPress={getEstimate} loading={loading} disabled={!hasAddresses} />
+
+        {estimate && (
+          <View style={styles.estimateCard}>
+            <View style={styles.estimateHeader}><Text style={styles.estimateTitle}>Your trip estimate</Text><Text style={styles.paymentBadge}>{paymentMethod.toUpperCase()}</Text></View>
+            <View style={styles.priceRow}><Text style={styles.muted}>Distance</Text><Text style={styles.value}>{estimate.estimatedDistanceKm.toFixed(1)} km</Text></View>
+            <View style={styles.priceRow}><Text style={styles.muted}>Estimated time</Text><Text style={styles.value}>{estimate.estimatedMinutes} min</Text></View>
+            <View style={styles.priceRow}><Text style={styles.muted}>Base fare</Text><Text style={styles.value}>₱{Number(estimate.baseFare).toFixed(2)}</Text></View>
+            <View style={styles.priceRow}><Text style={styles.muted}>Booking fee</Text><Text style={styles.value}>₱{Number(estimate.bookingFee).toFixed(2)}</Text></View>
+            <View style={[styles.priceRow, styles.total]}><Text style={styles.totalLabel}>Estimated total</Text><Text style={styles.totalValue}>₱{Number(estimate.estimatedTotal).toFixed(2)}</Text></View>
+            <AppButton title="Confirm ride" onPress={confirmBooking} loading={booking} />
+          </View>
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  page: { flex: 1, backgroundColor: colors.background },
+  content: { padding: 16, gap: 12, paddingBottom: 30 },
+  title: { fontSize: 28, fontWeight: '900', color: colors.text },
+  subtitle: { marginTop: 3, color: colors.muted },
+  mapCard: { height: 330, borderRadius: 22, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, position: 'relative' },
+  map: { ...StyleSheet.absoluteFillObject },
+  mapOverlay: { position: 'absolute', top: 12, left: 12, right: 12, alignItems: 'center' },
+  mapHint: { backgroundColor: 'rgba(255,255,255,0.94)', color: colors.text, fontSize: 12, fontWeight: '700', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, overflow: 'hidden' },
+  mapActions: { position: 'absolute', bottom: 12, left: 12 },
+  locationButton: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: colors.surface, borderRadius: 18, paddingHorizontal: 13, paddingVertical: 10, borderWidth: 1, borderColor: colors.border },
+  locationIcon: { color: colors.brand, fontSize: 20, fontWeight: '900' },
+  locationButtonText: { color: colors.text, fontWeight: '800', fontSize: 12 },
+  disabled: { opacity: 0.65 },
+  mapLoading: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  mapLoadingText: { color: colors.muted },
+  selectorRow: { gap: 8 },
+  selector: { flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: colors.surface, borderRadius: 15, padding: 12, borderWidth: 1, borderColor: colors.border },
+  selectorActive: { borderColor: colors.brand, borderWidth: 2 },
+  dot: { width: 11, height: 11, borderRadius: 6 },
+  selectorText: { flex: 1 },
+  selectorLabel: { color: colors.muted, fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  selectorValue: { color: colors.text, fontWeight: '700', marginTop: 3 },
+  coordinateCard: { backgroundColor: colors.brandSoft, borderRadius: 12, padding: 10 },
+  coordinateTitle: { color: colors.brandDark, fontSize: 11, fontWeight: '900' },
+  coordinateText: { color: colors.text, fontSize: 12, marginTop: 3 },
+  sectionTitle: { fontSize: 16, fontWeight: '900', color: colors.text, marginTop: 3 },
+  paymentRow: { flexDirection: 'row', gap: 8 },
+  payment: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  paymentActive: { borderColor: colors.brand, backgroundColor: colors.brandSoft },
+  paymentText: { color: colors.muted, fontWeight: '900', fontSize: 12 },
+  paymentTextActive: { color: colors.brandDark },
+  error: { color: colors.danger, lineHeight: 19 },
+  estimateCard: { backgroundColor: colors.surface, borderRadius: 20, padding: 18, gap: 11, borderWidth: 1, borderColor: colors.border },
+  estimateHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  estimateTitle: { fontSize: 20, fontWeight: '900', color: colors.text },
+  paymentBadge: { fontSize: 10, fontWeight: '900', color: colors.brandDark, backgroundColor: colors.brandSoft, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 10 },
+  priceRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  muted: { color: colors.muted },
+  value: { color: colors.text, fontWeight: '700' },
+  total: { borderTopWidth: 1, borderColor: colors.border, paddingTop: 12, marginTop: 4 },
+  totalLabel: { fontSize: 18, fontWeight: '900', color: colors.text },
+  totalValue: { fontSize: 22, fontWeight: '900', color: colors.brand },
+});

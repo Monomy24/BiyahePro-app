@@ -3,26 +3,42 @@
 -- Run this FIRST as a superuser (postgres)
 -- ============================================================
 
--- UUID generation (built into PG 18 but explicit for clarity)
+-- ============================================================
+-- PostgreSQL Extensions
+-- ============================================================
+
+-- UUID generation
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- PostGIS: geospatial support (driver locations, pickup/dropoff)
+-- PostGIS: geospatial support
+-- Used for driver locations, pickup/dropoff locations, etc.
 CREATE EXTENSION IF NOT EXISTS "postgis";
 
--- pg_trgm: fast text search on names, plates, emails
+-- pg_trgm: fast text search
+-- Used for names, plates, emails, etc.
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
 -- ============================================================
--- Create the database role for the app (least privilege)
+-- Database Role
 -- ============================================================
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'ridehailing_app') THEN
-    CREATE ROLE ridehailing_app LOGIN PASSWORD 'change_me_in_production';
-  END IF;
-END
-$$;
+--
+-- The ridehailing_app role is created separately by Docker
+-- using APP_DB_USER and APP_DB_PASSWORD from the .env file.
+--
+-- Do NOT put the database password directly in this SQL file.
+--
+-- ============================================================
 
--- Create the database
--- Run this separately in psql if the DB doesn't exist yet:
--- CREATE DATABASE ridehailing OWNER ridehailing_app;
+-- ============================================================
+-- Database Creation
+-- ============================================================
+--
+-- The database is created by Docker Compose using:
+--
+-- POSTGRES_DB
+-- POSTGRES_USER
+-- POSTGRES_PASSWORD
+--
+-- Therefore, database creation does not need to happen here.
+--
+-- ============================================================
