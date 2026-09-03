@@ -1,3 +1,4 @@
+// File path in project: RideHailing.API/Controllers/AuthController.cs
 using Microsoft.AspNetCore.Mvc;
 using RideHailing.API.Models;
 using RideHailing.API.Services;
@@ -11,8 +12,8 @@ public class AuthController(IAuthService authService) : ControllerBase
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
-        var result = await authService.RegisterAsync(request);
-        if (result == null) return BadRequest("Email already exists.");
+        var (result, error) = await authService.RegisterAsync(request);
+        if (result == null) return BadRequest(new { message = error ?? "Registration failed." });
         return Ok(result);
     }
 

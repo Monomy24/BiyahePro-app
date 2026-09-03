@@ -1,3 +1,4 @@
+// File path in project: RideHailing.API/Services/AuthService.cs
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -10,7 +11,7 @@ namespace RideHailing.API.Services;
 
 public interface IAuthService
 {
-    Task<AuthResponse?> RegisterAsync(RegisterRequest request);
+    Task<(AuthResponse? Response, string? Error)> RegisterAsync(RegisterRequest request);
     Task<AuthResponse?> LoginAsync(LoginRequest request);
     Task<AuthResponse?> RefreshTokenAsync(string refreshToken);
     Task RevokeRefreshTokenAsync(string refreshToken);
@@ -20,25 +21,43 @@ public class AuthService(
     IUserRepository userRepo,
     IConfiguration config) : IAuthService
 {
-    public async Task<AuthResponse?> RegisterAsync(RegisterRequest request)
+    public async Task<(AuthResponse? Response, string? Error)> RegisterAsync(RegisterRequest request)
     {
-        var existing = await userRepo.GetByEmailAsync(request.Email);
-        if (existing != null) return null;
+        var email = request.Email.ToLowerInvariant();
+
+        // BUG FIX: this previously only checked email — phone also has a
+        // UNIQUE constraint in the database (01_users.sql), but nothing
+        // checked it here. A duplicate phone (even under a brand new
+        // email) hit the DB constraint directly and threw an unhandled
+        // PostgresException, surfacing to the client as a bare 500 with
+        // no useful message.
+        if (await userRepo.GetByEmailAsync(email) != null)
+            return (null, "Email already exists.");
+        if (await userRepo.GetByPhoneAsync(request.Phone) != null)
+            return (null, "Phone number already registered.");
 
         var user = new User
         {
-            Id = Guid.NewGuid(),
-            FullName = request.FullName,
-            Email = request.Email.ToLowerInvariant(),
-            Phone = request.Phone,
+            FullName     = request.FullName,
+            Email        = email,
+            Phone        = request.Phone,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-            Role = request.Role,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            Role         = request.Role,
         };
 
-        await userRepo.CreateAsync(user);
-        return BuildAuthResponse(user);
+        try
+        {
+            var created = await userRepo.CreateAsync(user);
+            return (BuildAuthResponse(created), null);
+        }
+        catch (Npgsql.PostgresException ex) when (ex.SqlState == Npgsql.PostgresErrorCodes.UniqueViolation)
+        {
+            // Defense-in-depth for the race between the checks above and
+            // this insert (two concurrent registrations with the same
+            // email/phone), and for any unique constraint added later
+            // that this method doesn't explicitly check for yet.
+            return (null, "Email or phone number already registered.");
+        }
     }
 
     public async Task<AuthResponse?> LoginAsync(LoginRequest request)

@@ -1,6 +1,35 @@
-# 🚗 BiyahePro — Backend Engine & Core Database Setup
+# 🚗 BiyahePro — Ride-Hailing Platform
 
-Welcome to the central repository for the **BiyahePro** ride-hailing backend ecosystem. This project features a high-performance database schema using time-sortable identifiers, spatial tracking data, and a secure ASP.NET Core Web API engine powered by Dapper Micro-ORM and SignalR WebSockets.
+Welcome to the central repository for **BiyahePro**, a ride-hailing platform with a customer mobile app, browser-based admin client, ASP.NET Core API, and PostgreSQL database.
+
+## 🧰 Tech Stack
+
+| Area | Technologies |
+| --- | --- |
+| Customer mobile | Expo SDK 57, React Native 0.86, React 19, TypeScript, Expo Router |
+| Mobile capabilities | `react-native-maps`, `expo-location`, `expo-secure-store`, `@react-native-community/datetimepicker` |
+| Admin web client | React 19, Vite 8, Tailwind CSS 4, Lucide React |
+| Backend API | ASP.NET Core on .NET 10, C#, Dapper, JWT bearer authentication, BCrypt |
+| Real-time communication | ASP.NET Core SignalR and `@microsoft/signalr` |
+| Database | PostgreSQL, PostGIS, Npgsql, NetTopologySuite |
+| Local infrastructure | Docker Compose |
+
+## 📚 Overall Technology Stack
+
+The complete BiyahePro stack, from client applications to infrastructure:
+
+- **Languages:** C#, TypeScript, JavaScript, SQL
+- **Customer mobile app:** Expo SDK 57, React Native 0.86, React 19, React DOM, React Native Web, Expo Router
+- **Mobile libraries:** `react-native-maps`, `expo-location`, `expo-secure-store`, `expo-status-bar`, `@react-native-community/datetimepicker`
+- **Admin web client:** React 19, React DOM, Vite 8, Tailwind CSS 4, `@tailwindcss/vite`, Lucide React
+- **Web development tools:** Node.js, npm, ESLint, `@vitejs/plugin-react`, React Hooks and React Refresh ESLint plugins
+- **Backend:** C#, ASP.NET Core Web API on .NET 10, REST endpoints, dependency injection, nullable reference types
+- **Authentication and security:** JWT bearer authentication, BCrypt password hashing, secure mobile token storage
+- **Real-time features:** ASP.NET Core SignalR, `@microsoft/signalr`
+- **Data access:** Dapper, Npgsql, NetTopologySuite
+- **Database:** PostgreSQL 18, PostGIS 3.6, UUIDv7 identifiers, spatial queries
+- **Infrastructure:** Docker, Docker Compose, PostgreSQL persistent volumes, container health checks
+- **Quality and configuration:** TypeScript compiler, ESLint, Vite production builds, environment variables, ASP.NET configuration
 
 ---
 
@@ -36,6 +65,13 @@ BiyahePro - new/                                    ← Root Workspace Directory
 │               ├── PinOverlay.jsx
 |── ui/
 |── StatusBadge.jsx
+│
+├── biyahepro-customer-mobile/                     ← Phase 0: Expo customer mobile app
+│   ├── app/                                       ← Expo Router screens and layouts
+│   │   ├── (auth)/                                ← Login and registration
+│   │   ├── (tabs)/                                ← Home, bookings, and account
+│   │   └── booking/                               ← New booking and driver matching
+│   └── src/                                       ← API, auth session, types, and theme
 │
 ├── ridehailing-db/                                ← Phase 1: PostgreSQL Database Scripts
 │   ├── 00_extensions.sql                          ← PostGIS/UUID extensions
@@ -84,6 +120,47 @@ BiyahePro - new/                                    ← Root Workspace Directory
         ├── TripService.cs                         ← Trip booking & dispatch
         ├── FareService.cs                         ← Dynamic fare calculation
         └── SettingsService.cs                     ← Configuration management
+```
+
+---
+
+## 📱 Customer Mobile App (Expo)
+
+`biyahepro-customer-mobile` is the customer-facing mobile application. It supports:
+
+- Customer registration and login with secure native JWT session storage
+- Home, booking history, and account tabs
+- Map-based pickup and destination selection with current location
+- Reverse-geocoded addresses and manual address editing
+- Motorcycle or motorcab selection
+- Cash, GCash, and card payment method selection
+- Server-side fare estimates and booking confirmation
+- Immediate and scheduled rides
+- Searching-for-driver status polling and SignalR-ready trip updates
+
+### 🏃 Start the customer app locally
+1. Open a terminal in the mobile app folder:
+   ```powershell
+   cd "C:\Users\lague\Desktop\BiyahePro - new\biyahepro-customer-mobile"
+   ```
+2. Install dependencies and start Expo:
+   ```powershell
+   npm install
+   npm start
+   ```
+3. Use Expo Go, an Android emulator, an iOS simulator, or the web option from the Expo developer menu.
+
+For a physical device, create a `.env` file and point the app to the computer's LAN address:
+```env
+EXPO_PUBLIC_API_URL=http://192.168.1.20:5000
+EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=YOUR_ANDROID_GOOGLE_MAPS_KEY
+```
+
+The API must be reachable from the device. On a physical phone, `localhost` refers to the phone rather than the development computer. Store/development builds may also require the appropriate Google Maps configuration.
+
+Run the mobile TypeScript check with:
+```powershell
+npm run typecheck
 ```
 
 ---

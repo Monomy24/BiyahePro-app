@@ -1,3 +1,4 @@
+// File path in project: RideHailing.API/Repositories/UserRepository.cs
 using Dapper;
 using Npgsql;
 using RideHailing.API.Models;
@@ -8,6 +9,7 @@ public interface IUserRepository
 {
     Task<User?> GetByIdAsync(Guid id);
     Task<User?> GetByEmailAsync(string email);
+    Task<User?> GetByPhoneAsync(string phone);
     Task<User> CreateAsync(User user);
     Task SaveRefreshTokenAsync(Guid userId, string token, DateTime expiry);
     Task<Guid?> ValidateRefreshTokenAsync(string token);
@@ -29,6 +31,12 @@ public class UserRepository(IConfiguration config) : IUserRepository
     {
         using var db = Connection();
         return await db.QuerySingleOrDefaultAsync<User>("SELECT * FROM users WHERE email = @Email", new { Email = email });
+    }
+
+    public async Task<User?> GetByPhoneAsync(string phone)
+    {
+        using var db = Connection();
+        return await db.QuerySingleOrDefaultAsync<User>("SELECT * FROM users WHERE phone = @Phone", new { Phone = phone });
     }
 
     public async Task<User> CreateAsync(User user)

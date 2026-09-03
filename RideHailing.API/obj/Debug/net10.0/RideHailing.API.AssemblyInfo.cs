@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RideHailing.API")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9da657e46bff53af1754d6bdecd9d060496da850")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4a562a8c7152637d50c78d93f6bb5c32980e2754")]
 [assembly: System.Reflection.AssemblyProductAttribute("RideHailing.API")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RideHailing.API")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

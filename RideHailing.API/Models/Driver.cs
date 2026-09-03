@@ -1,4 +1,5 @@
 // File path in project: RideHailing.API/Models/Driver.cs
+// File path in project: RideHailing.API/Models/Driver.cs
 // ============================================================
 // Models/Driver.cs
 // Driver + Vehicle domain models and related DTOs
@@ -98,7 +99,10 @@ public record RegisterDriverRequest(
 );
 
 public record IssueStrikeRequest(
-    [property: Required(AllowEmptyStrings = false)]
+    // See the note on RegisterRequest.Password in User.cs — attributes on
+    // a record's primary constructor parameter must NOT use a
+    // [property: ...] target, or ASP.NET Core throws at request time.
+    [Required(AllowEmptyStrings = false)]
     string Reason
 );
 

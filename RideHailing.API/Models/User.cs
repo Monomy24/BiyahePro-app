@@ -1,3 +1,4 @@
+// File path in project: RideHailing.API/Models/User.cs
 // ============================================================
 // Models/User.cs
 // User domain model + Auth request/response DTOs
@@ -31,8 +32,17 @@ public record RegisterRequest(
     // one digit, and one symbol. [ApiController] validates this
     // automatically and returns 400 with the message below if it fails —
     // no controller/service code needs to check this manually.
-    [property: Required]
-    [property: RegularExpression(
+    //
+    // IMPORTANT: for a record's primary constructor, these attributes
+    // must go directly on the parameter (as below), NOT with a
+    // [property: ...] target. ASP.NET Core's record-aware model
+    // validation reads metadata from the constructor parameter itself;
+    // putting it on the generated property instead throws
+    // InvalidOperationException at request time ("validation metadata
+    // ... will be ignored ... must be associated with the constructor
+    // parameter").
+    [Required]
+    [RegularExpression(
         @"^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$",
         ErrorMessage = "Password must be at least 8 characters and include at least one uppercase letter, one number, and one symbol.")]
     string Password,
